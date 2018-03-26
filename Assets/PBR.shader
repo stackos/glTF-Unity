@@ -12,7 +12,7 @@ Shader "PBR"
         u_NormalSampler("Normal Texture", 2D) = "bump" {}
         u_NormalScale("Normal Scale", Range(0, 10)) = 1
         u_EmissiveSampler("Emissive Texture", 2D) = "black" {}
-        u_EmissiveFactor("Emissiver", Color) = (0, 0, 0, 0)
+        u_EmissiveFactor("Emissive", Color) = (0, 0, 0, 0)
         u_MetallicRoughnessSampler("Metallic Roughness Texture", 2D) = "white" {}
         u_Metallic("Metallic", Range(0, 1)) = 1
         u_Roughness("Roughness", Range(0, 1)) = 1
@@ -121,7 +121,7 @@ Shader "PBR"
                 worldNormal.x = dot(i.tspace0, tnormal);
                 worldNormal.y = dot(i.tspace1, tnormal);
                 worldNormal.z = dot(i.tspace2, tnormal);
-                return worldNormal;
+                return normalize(worldNormal);
             }
 
             vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
