@@ -29,6 +29,18 @@ Shader "PBR"
             #pragma fragment frag
             #include "UnityCG.cginc"
 
+            #define vec2 float2
+            #define vec3 float3
+            #define vec4 float4
+            #define samplerCube samplerCUBE
+            #define texture2D tex2D
+            #define textureCube texCUBE
+            #define textureCubeLodEXT texCUBElod
+            #define mix lerp
+            #define u_Camera _WorldSpaceCameraPos
+            #define M_PI 3.141592653589793
+            #define c_MinRoughness 0.04
+
             struct appdata
             {
                 float4 vertex : POSITION;
@@ -47,6 +59,11 @@ Shader "PBR"
                 half3 tspace2 : TEXCOORD3;
             };
             
+            vec2 RevertUV(vec2 uv)
+            {
+                return vec2(uv.x, 1.0 - uv.y);
+            }
+
             v2f vert(appdata v)
             {
                 v2f o;
@@ -62,18 +79,6 @@ Shader "PBR"
                 o.v_UV = v.uv;
                 return o;
             }
-
-            #define vec2 float2
-            #define vec3 float3
-            #define vec4 float4
-            #define samplerCube samplerCUBE
-            #define texture2D tex2D
-            #define textureCube texCUBE
-            #define textureCubeLod texCUBElod
-            #define mix lerp
-            #define u_Camera _WorldSpaceCameraPos
-            #define M_PI 3.141592653589793
-            #define c_MinRoughness 0.04
 
             uniform vec3 u_LightDirection;
             uniform vec4 u_LightColor;
@@ -128,10 +133,10 @@ Shader "PBR"
             {
                 float mipCount = 9.0; // resolution of 512x512
                 float lod = (pbrInputs.perceptualRoughness * mipCount);
-                vec3 brdf = SRGBtoLINEAR(texture2D(u_brdfLUT, vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness))).rgb;
+                vec3 brdf = SRGBtoLINEAR(texture2D(u_brdfLUT, RevertUV(vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness)))).rgb;
                 vec3 diffuseLight = SRGBtoLINEAR(textureCube(u_DiffuseEnvSampler, n)).rgb;
 
-                vec3 specularLight = SRGBtoLINEAR(textureCubeLod(u_SpecularEnvSampler, vec4(reflection, lod))).rgb;
+                vec3 specularLight = SRGBtoLINEAR(textureCubeLodEXT(u_SpecularEnvSampler, vec4(reflection, lod))).rgb;
 
                 vec3 diffuse = diffuseLight * pbrInputs.diffuseColor;
                 vec3 specular = specularLight * (pbrInputs.specularColor * brdf.x + brdf.y);
