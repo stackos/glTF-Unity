@@ -31,7 +31,7 @@ public class glTFImporter : EditorWindow
 
             if (File.Exists(gltfPath))
             {
-                LoadGLTFMeshes(gltfPath);
+                LoadGLTF(gltfPath);
             }
         }
         GUILayout.EndHorizontal();
@@ -57,14 +57,22 @@ public class glTFImporter : EditorWindow
         return defaultValue;
     }
 
-    class Cache
+    class MeshPrimitives
     {
-        public List<byte[]> buffers;
+        public Mesh mesh;
+        public List<int> materials;
     }
 
-    static void LoadGLTFBuffer(JObject gltf, Cache cache, int index)
+    class Cache
     {
-        JToken jbuffer = gltf["buffers"][index];
+        public List<byte[]> buffers = new List<byte[]>();
+        public List<MeshPrimitives> meshes = new List<MeshPrimitives>();
+        public List<Material> materials = new List<Material>();
+    }
+
+    static byte[] LoadGLTFBuffer(JObject gltf, Cache cache, int index)
+    {
+        var jbuffer = gltf["buffers"][index];
 
         string uri = GetPropertyString(jbuffer, "uri", null);
         string dir = new FileInfo((string) gltf["path"]).Directory.FullName;
@@ -72,19 +80,21 @@ public class glTFImporter : EditorWindow
 
         if (File.Exists(binPath))
         {
-            cache.buffers[index] = File.ReadAllBytes(binPath);
+            return File.ReadAllBytes(binPath);
         }
         else
         {
             Debug.LogError("can not load ext bin file:" + binPath);
         }
+
+        return null;
     }
 
     static T[] AccessBuffer<T>(JObject gltf, Cache cache, JToken jaccessor, int bufferViewIndex, int index, int getCount, int getSize)
     {
         var array = new T[getCount];
 
-        JToken jbufferView = gltf["bufferViews"][bufferViewIndex];
+        var jbufferView = gltf["bufferViews"][bufferViewIndex];
 
         int bufferIndex = GetPropertyInt(jbufferView, "buffer", -1);
         if (bufferIndex >= 0)
@@ -106,7 +116,7 @@ public class glTFImporter : EditorWindow
         int accessorIndex = GetPropertyInt(jattributes, attributeName, -1);
         if (accessorIndex >= 0)
         {
-            JToken jaccessor = gltf["accessors"][accessorIndex];
+            var jaccessor = gltf["accessors"][accessorIndex];
 
             int bufferViewIndex = GetPropertyInt(jaccessor, "bufferView", -1);
             if (bufferViewIndex >= 0)
@@ -121,8 +131,10 @@ public class glTFImporter : EditorWindow
         }
     }
 
-    static Mesh LoadGLTFMesh(JObject gltf, Cache cache, JObject jmesh)
+    static MeshPrimitives LoadGLTFMesh(JObject gltf, Cache cache, int meshIndex)
     {
+        var jmesh = gltf["meshes"][meshIndex];
+
         List<float[]> vertexValues = new List<float[]>();
         List<float[]> normalValues = new List<float[]>();
         List<float[]> tangentValues = new List<float[]>();
@@ -132,6 +144,7 @@ public class glTFImporter : EditorWindow
         List<short[]> blendIndexValues = new List<short[]>();
         List<float[]> blendWeightValues = new List<float[]>();
         List<int[]> indices = new List<int[]>();
+        List<int> materials = new List<int>();
 
         int vertexCount = 0;
 
@@ -154,7 +167,7 @@ public class glTFImporter : EditorWindow
             int indicesAccessor = GetPropertyInt(jprimitive, "indices", -1);
             if (indicesAccessor >= 0)
             {
-                JToken jaccessor = gltf["accessors"][indicesAccessor];
+                var jaccessor = gltf["accessors"][indicesAccessor];
 
                 int bufferViewIndex = GetPropertyInt(jaccessor, "bufferView", -1);
                 if (bufferViewIndex >= 0)
@@ -171,10 +184,7 @@ public class glTFImporter : EditorWindow
             }
 
             int materialIndex = GetPropertyInt(jprimitive, "material", -1);
-            if (materialIndex >= 0)
-            {
-
-            }
+            materials.Add(materialIndex);
 
             vertexCount += vertexValues.Count;
         }
@@ -253,25 +263,149 @@ public class glTFImporter : EditorWindow
             mesh.SetTriangles(subIndices, i);
         }
 
-        return mesh;
+        string name = GetPropertyString(jmesh, "name", null);
+        if (string.IsNullOrEmpty(name) == false)
+        {
+            name = string.Format("mesh_{0}", name);
+        }
+        else
+        {
+            name = string.Format("mesh_{0}", meshIndex);
+        }
+        mesh.name = name;
+
+        MeshPrimitives mp = new MeshPrimitives();
+        mp.mesh = mesh;
+        mp.materials = materials;
+
+        return mp;
     }
 
-    static List<Mesh> LoadGLTFMeshes(string path)
+    static Material LoadGLTFMaterial(JObject gltf, Cache cache, int materialIndex)
     {
-        List<Mesh> meshes = new List<Mesh>();
+        var jmaterial = gltf["materials"][materialIndex];
 
+        Material material = new Material(Shader.Find("PBR"));
+
+        var jpbrMetallicRoughness = jmaterial["pbrMetallicRoughness"];
+
+//        {
+//            "pbrMetallicRoughness": {
+//                "baseColorTexture": {
+//                    "index": 0
+//                },
+//    "metallicRoughnessTexture": {
+//                    "index": 1
+//    }
+//            },
+//  "normalTexture": {
+//                "index": 2
+//  },
+//  "occlusionTexture": {
+//                "index": 1
+//  },
+//  "emissiveFactor": [
+//    1.0,
+//    1.0,
+//    1.0
+//  ],
+//  "emissiveTexture": {
+//    "index": 3
+//  },
+//  "name": "BoomBox_Mat"
+//}
+
+        string name = GetPropertyString(jmaterial, "name", null);
+        if (string.IsNullOrEmpty(name) == false)
+        {
+            name = string.Format("material_{0}", name);
+        }
+        else
+        {
+            name = string.Format("material_{0}", materialIndex);
+        }
+        material.name = name;
+
+        return material;
+    }
+
+    static void LoadGLTFNode(JObject gltf, Cache cache, int nodeIndex, GameObject parent)
+    {
+        var jnode = gltf["nodes"][nodeIndex] as JObject;
+
+        string name = GetPropertyString(jnode, "name", "node_" + nodeIndex);
+        GameObject obj = new GameObject(name);
+        if (parent)
+        {
+            obj.transform.parent = parent.transform;
+        }
+
+        JToken jtranslation;
+        if (jnode.TryGetValue("translation", out jtranslation))
+        {
+            float x = (float) jtranslation[0];
+            float y = (float) jtranslation[1];
+            float z = (float) jtranslation[2];
+
+            obj.transform.localPosition = new Vector3(x, y, z);
+        }
+
+        JToken jrotation;
+        if (jnode.TryGetValue("rotation", out jrotation))
+        {
+            float x = (float) jrotation[0];
+            float y = (float) jrotation[1];
+            float z = (float) jrotation[2];
+            float w = (float) jrotation[3];
+
+            obj.transform.localRotation = new Quaternion(x, y, z, w);
+        }
+
+        JToken jscale;
+        if (jnode.TryGetValue("scale", out jscale))
+        {
+            float x = (float) jscale[0];
+            float y = (float) jscale[1];
+            float z = (float) jscale[2];
+
+            obj.transform.localScale = new Vector3(x, y, z);
+        }
+
+        int meshIndex = GetPropertyInt(jnode, "mesh", -1);
+        if (meshIndex >= 0)
+        {
+            obj.AddComponent<MeshFilter>().sharedMesh = cache.meshes[meshIndex].mesh;
+            var renderer = obj.AddComponent<MeshRenderer>();
+
+            Material[] materials = new Material[cache.meshes[meshIndex].materials.Count];
+            for (int i = 0; i < materials.Length; ++i)
+            {
+                int materialIndex = cache.meshes[meshIndex].materials[i];
+                if (materialIndex >= 0)
+                {
+                    materials[i] = cache.materials[materialIndex];
+                }
+            }
+            renderer.sharedMaterials = materials;
+        }
+
+        JToken jchildren;
+        if (jnode.TryGetValue("children", out jchildren))
+        {
+            int childCount = (jchildren as JArray).Count;
+            for (int i = 0; i < childCount; ++i)
+            {
+                int child = (int) jchildren[i];
+                LoadGLTFNode(gltf, cache, child, obj);
+            }
+        }
+    }
+
+    static void LoadGLTF(string path)
+    {
         string json = File.ReadAllText(path);
         JObject gltf = JObject.Parse(json);
         gltf.Add("path", path);
-
-        Cache cache = new Cache();
-        cache.buffers = new List<byte[]>();
-        int bufferCount = (gltf["buffers"] as JArray).Count;
-        for (int i = 0; i < bufferCount; ++i)
-        {
-            cache.buffers.Add(null);
-            LoadGLTFBuffer(gltf, cache, i);
-        }
 
         var fileInfo = new FileInfo(path);
         string gltfName = fileInfo.Name;
@@ -283,28 +417,46 @@ public class glTFImporter : EditorWindow
             Directory.CreateDirectory(dir);
         }
 
-        var jmeshes = gltf["meshes"] as JArray;
-        int meshCount = jmeshes.Count;
-        for (int i = 0; i < meshCount; ++i)
+        Cache cache = new Cache();
+
+        // load buffers
+        int bufferCount = (gltf["buffers"] as JArray).Count;
+        for (int i = 0; i < bufferCount; ++i)
         {
-            var jmesh = jmeshes[i] as JObject;
-
-            var mesh = LoadGLTFMesh(gltf, cache, jmesh);
-
-            string name = GetPropertyString(jmesh, "name", null);
-            if (string.IsNullOrEmpty(name) == false)
-            {
-                name = string.Format("mesh_{0}", name);
-            }
-            else
-            {
-                name = string.Format("mesh_{0}", i);
-            }
-
-            AssetDatabase.CreateAsset(mesh, string.Format("Assets/glTF/{0}/{1}.asset", gltfName, name));
-            meshes.Add(mesh);
+            cache.buffers.Add(LoadGLTFBuffer(gltf, cache, i));
         }
 
-        return meshes;
+        // load meshes
+        int meshCount = (gltf["meshes"] as JArray).Count;
+        for (int i = 0; i < meshCount; ++i)
+        {
+            MeshPrimitives mp = LoadGLTFMesh(gltf, cache, i);
+            cache.meshes.Add(mp);
+
+            AssetDatabase.CreateAsset(mp.mesh, string.Format("Assets/glTF/{0}/{1}.asset", gltfName, mp.mesh.name));
+        }
+
+        // load materials
+        int materialCount = (gltf["materials"] as JArray).Count;
+        for (int i = 0; i < materialCount; ++i)
+        {
+            Material material = LoadGLTFMaterial(gltf, cache, i);
+            cache.materials.Add(material);
+
+            AssetDatabase.CreateAsset(material, string.Format("Assets/glTF/{0}/{1}.mat", gltfName, material.name));
+        }
+
+        // load nodes
+        var root = new GameObject(gltfName);
+
+        int scene = GetPropertyInt(gltf, "scene", 0);
+        var jnodes = gltf["scenes"][scene]["nodes"] as JArray;
+        for (int i = 0; i < jnodes.Count; ++i)
+        {
+            int node = (int) jnodes[i];
+            LoadGLTFNode(gltf, cache, node, root);
+        }
+
+        PrefabUtility.CreatePrefab(string.Format("Assets/glTF/{0}/{1}.prefab", gltfName, gltfName), root, ReplacePrefabOptions.ConnectToPrefab);
     }
 }
