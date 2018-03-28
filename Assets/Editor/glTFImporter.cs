@@ -57,6 +57,16 @@ public class glTFImporter : EditorWindow
         return defaultValue;
     }
 
+    static float GetPropertyFloat(JToken obj, string name, float defaultValue)
+    {
+        JToken value;
+        if ((obj as JObject).TryGetValue(name, out value))
+        {
+            return (float) value;
+        }
+        return defaultValue;
+    }
+
     class MeshPrimitives
     {
         public Mesh mesh;
@@ -68,6 +78,7 @@ public class glTFImporter : EditorWindow
         public List<byte[]> buffers = new List<byte[]>();
         public List<MeshPrimitives> meshes = new List<MeshPrimitives>();
         public List<Material> materials = new List<Material>();
+        public List<Texture2D> textures = new List<Texture2D>();
     }
 
     static byte[] LoadGLTFBuffer(JObject gltf, Cache cache, int index)
@@ -288,32 +299,89 @@ public class glTFImporter : EditorWindow
         Material material = new Material(Shader.Find("PBR"));
 
         var jpbrMetallicRoughness = jmaterial["pbrMetallicRoughness"];
+        if (jpbrMetallicRoughness != null)
+        {
+            var jbaseColorTexture = jpbrMetallicRoughness["baseColorTexture"];
+            if (jbaseColorTexture != null)
+            {
+                int index = GetPropertyInt(jbaseColorTexture, "index", -1);
+                if (index >= 0)
+                {
+                    material.SetTexture("u_BaseColorSampler", cache.textures[index]);
+                }
+            }
 
-//        {
-//            "pbrMetallicRoughness": {
-//                "baseColorTexture": {
-//                    "index": 0
-//                },
-//    "metallicRoughnessTexture": {
-//                    "index": 1
-//    }
-//            },
-//  "normalTexture": {
-//                "index": 2
-//  },
-//  "occlusionTexture": {
-//                "index": 1
-//  },
-//  "emissiveFactor": [
-//    1.0,
-//    1.0,
-//    1.0
-//  ],
-//  "emissiveTexture": {
-//    "index": 3
-//  },
-//  "name": "BoomBox_Mat"
-//}
+            var jmetallicRoughnessTexture = jpbrMetallicRoughness["metallicRoughnessTexture"];
+            if (jmetallicRoughnessTexture != null)
+            {
+                int index = GetPropertyInt(jmetallicRoughnessTexture, "index", -1);
+                if (index >= 0)
+                {
+                    material.SetTexture("u_MetallicRoughnessSampler", cache.textures[index]);
+                }
+            }
+
+            float metallicFactor = GetPropertyFloat(jpbrMetallicRoughness, "metallicFactor", 1.0f);
+            material.SetFloat("u_Metallic", metallicFactor);
+
+            float roughnessFactor = GetPropertyFloat(jpbrMetallicRoughness, "roughnessFactor", 1.0f);
+            material.SetFloat("u_Roughness", roughnessFactor);
+
+            var jbaseColorFactor = jpbrMetallicRoughness["baseColorFactor"];
+            if (jbaseColorFactor != null)
+            {
+                Color baseColorFactor = new Color((float) jbaseColorFactor[0], (float) jbaseColorFactor[1], (float) jbaseColorFactor[2], (float) jbaseColorFactor[3]);
+                material.SetColor("u_BaseColorFactor", baseColorFactor);
+            }
+        }
+
+        var jnormalTexture = jmaterial["normalTexture"];
+        if (jnormalTexture != null)
+        {
+            int index = GetPropertyInt(jnormalTexture, "index", -1);
+            if (index >= 0)
+            {
+                material.SetTexture("u_NormalSampler", cache.textures[index]);
+
+                string texturePath = AssetDatabase.GetAssetPath(cache.textures[index]);
+                TextureImporter im = AssetImporter.GetAtPath(texturePath) as TextureImporter;
+                im.textureType = TextureImporterType.NormalMap;
+                //AssetDatabase.ImportAsset(texturePath);
+            }
+
+            float scale = GetPropertyFloat(jnormalTexture, "scale", 1.0f);
+            material.SetFloat("u_NormalScale", scale);
+        }
+
+        var jocclusionTexture = jmaterial["occlusionTexture"];
+        if (jocclusionTexture != null)
+        {
+            int index = GetPropertyInt(jocclusionTexture, "index", -1);
+            if (index >= 0)
+            {
+                material.SetTexture("u_OcclusionSampler", cache.textures[index]);
+            }
+
+            float strength = GetPropertyFloat(jocclusionTexture, "strength", 1.0f);
+            material.SetFloat("u_OcclusionStrength", strength);
+        }
+
+        var jemissiveTexture = jmaterial["emissiveTexture"];
+        if (jemissiveTexture != null)
+        {
+            int index = GetPropertyInt(jemissiveTexture, "index", -1);
+            if (index >= 0)
+            {
+                material.SetTexture("u_EmissiveSampler", cache.textures[index]);
+            }
+        }
+
+        var jemissiveFactor = jmaterial["emissiveFactor"];
+        if (jemissiveFactor != null)
+        {
+            Color emissiveFactor = new Color((float) jemissiveFactor[0], (float) jemissiveFactor[1], (float) jemissiveFactor[2], 1);
+            material.SetColor("u_EmissiveFactor", emissiveFactor);
+        }
 
         string name = GetPropertyString(jmaterial, "name", null);
         if (string.IsNullOrEmpty(name) == false)
@@ -327,6 +395,49 @@ public class glTFImporter : EditorWindow
         material.name = name;
 
         return material;
+    }
+
+    static Texture2D LoadGLTFTexture(JObject gltf, Cache cache, int textureIndex, string assetDir)
+    {
+        var jtexture = gltf["textures"][textureIndex];
+
+        Texture2D texture = null;
+
+        int source = GetPropertyInt(jtexture, "source", -1);
+        if (source >= 0)
+        {
+            var jimage = gltf["images"][source];
+
+            string uri = GetPropertyString(jimage, "uri", null);
+            string assetPath = assetDir + "/" + uri;
+            texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+
+            if (texture == null)
+            {
+                string dir = new FileInfo((string) gltf["path"]).Directory.FullName;
+                string imagePath = dir + "/" + uri;
+
+                if (File.Exists(imagePath))
+                {
+                    File.Copy(imagePath, assetPath);
+                    AssetDatabase.Refresh();
+
+                    texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+                }
+                else
+                {
+                    Debug.LogError("can not load ext image file:" + imagePath);
+                }
+            }
+        }
+
+        int sampler = GetPropertyInt(jtexture, "sampler", -1);
+        if (sampler >= 0)
+        {
+            var jsampler = gltf["samplers"][sampler];
+        }
+
+        return texture;
     }
 
     static void LoadGLTFNode(JObject gltf, Cache cache, int nodeIndex, GameObject parent)
@@ -434,6 +545,14 @@ public class glTFImporter : EditorWindow
             cache.meshes.Add(mp);
 
             AssetDatabase.CreateAsset(mp.mesh, string.Format("Assets/glTF/{0}/{1}.asset", gltfName, mp.mesh.name));
+        }
+
+        // load textures
+        int textureCount = (gltf["textures"] as JArray).Count;
+        for (int i = 0; i < textureCount; ++i)
+        {
+            Texture2D texture = LoadGLTFTexture(gltf, cache, i, dir);
+            cache.textures.Add(texture);
         }
 
         // load materials
