@@ -20,7 +20,7 @@ public class glTFImporter : EditorWindow
         GUILayout.BeginHorizontal();
         GUILayout.Label("glTF path", GUILayout.Width(55));
         GUILayout.TextField(gltfPath);
-        if (GUILayout.Button("load", GUILayout.Width(80)))
+        if (GUILayout.Button("Load", GUILayout.Width(80)))
         {
             string dir = null;
             if (File.Exists(gltfPath))
@@ -516,7 +516,7 @@ public class glTFImporter : EditorWindow
     {
         string json = File.ReadAllText(path);
         JObject gltf = JObject.Parse(json);
-        gltf.Add("path", path);
+        gltf["path"] = path;
 
         var fileInfo = new FileInfo(path);
         string gltfName = fileInfo.Name;
