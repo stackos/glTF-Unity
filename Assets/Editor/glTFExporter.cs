@@ -6,6 +6,17 @@ using System.Collections.Generic;
 
 public class glTFExporter : EditorWindow
 {
+    const int GL_ARRAY_BUFFER = 34962;
+    const int GL_ELEMENT_ARRAY_BUFFER = 34963;
+    const int GL_UNSIGNED_SHORT = 5123;
+    const int GL_FLOAT = 5126;
+    const int GL_NEAREST = 0x2600;
+    const int GL_LINEAR = 0x2601;
+    const int GL_NEAREST_MIPMAP_NEAREST = 0x2700;
+    const int GL_LINEAR_MIPMAP_LINEAR = 0x2703;
+    const int GL_CLAMP_TO_EDGE = 0x812F;
+    const int GL_REPEAT = 0x2901;
+
     GameObject root;
     string gltfPath;
     Cache cache;
@@ -14,6 +25,7 @@ public class glTFExporter : EditorWindow
     {
         public List<Mesh> meshes = new List<Mesh>();
         public List<Material> materials = new List<Material>();
+        public List<Texture> textures = new List<Texture>();
         public List<glTFAccessor> accessors = new List<glTFAccessor>();
         public List<byte> buffer = new List<byte>();
     }
@@ -25,9 +37,6 @@ public class glTFExporter : EditorWindow
         public int byteLength;
         public int byteStride;
         public int target;
-
-        public const int GL_ARRAY_BUFFER = 34962;
-        public const int GL_ELEMENT_ARRAY_BUFFER = 34963;
     }
 
     class glTFAccessor
@@ -40,9 +49,6 @@ public class glTFExporter : EditorWindow
         public int count;
         // min
         // max
-
-        public const int GL_UNSIGNED_SHORT = 5123;
-        public const int GL_FLOAT = 5126;
     }
 
     [MenuItem("glTF/Exporter")]
@@ -111,6 +117,9 @@ public class glTFExporter : EditorWindow
         ExportMeshes(gltf);
         ExportAccessors(gltf);
         ExportMaterials(gltf);
+        ExportSamplers(gltf);
+        ExportTextures(gltf);
+        ExportImages(gltf);
         cache = null;
 
         File.WriteAllText(gltfPath, gltf.ToString());
@@ -378,9 +387,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / vertices.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_FLOAT;
+                        accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC3";
                         accessor.count = vertices.Length;
 
@@ -396,9 +405,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / normals.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_FLOAT;
+                        accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC3";
                         accessor.count = normals.Length;
 
@@ -414,9 +423,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / tangents.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_FLOAT;
+                        accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC4";
                         accessor.count = tangents.Length;
 
@@ -432,9 +441,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / uv.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_FLOAT;
+                        accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC2";
                         accessor.count = uv.Length;
 
@@ -450,9 +459,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / uv2.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_FLOAT;
+                        accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC2";
                         accessor.count = uv2.Length;
 
@@ -468,9 +477,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / colors.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_FLOAT;
+                        accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC4";
                         accessor.count = colors.Length;
 
@@ -486,9 +495,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / boneWeights.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_UNSIGNED_SHORT;
+                        accessor.componentType = GL_UNSIGNED_SHORT;
                         accessor.type = "VEC4";
                         accessor.count = boneWeights.Length;
 
@@ -504,9 +513,9 @@ public class glTFExporter : EditorWindow
                         accessor.bufferViewObject.byteOffset = offset;
                         accessor.bufferViewObject.byteLength = size;
                         accessor.bufferViewObject.byteStride = size / boneWeights.Length;
-                        accessor.bufferViewObject.target = glTFBufferView.GL_ARRAY_BUFFER;
+                        accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
                         accessor.bufferView = cache.accessors.Count;
-                        accessor.componentType = glTFAccessor.GL_FLOAT;
+                        accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC4";
                         accessor.count = boneWeights.Length;
 
@@ -527,9 +536,9 @@ public class glTFExporter : EditorWindow
                     accessor.bufferViewObject.byteOffset = offset;
                     accessor.bufferViewObject.byteLength = size;
                     accessor.bufferViewObject.byteStride = size / indices.Length;
-                    accessor.bufferViewObject.target = glTFBufferView.GL_ELEMENT_ARRAY_BUFFER;
+                    accessor.bufferViewObject.target = GL_ELEMENT_ARRAY_BUFFER;
                     accessor.bufferView = cache.accessors.Count;
-                    accessor.componentType = glTFAccessor.GL_UNSIGNED_SHORT;
+                    accessor.componentType = GL_UNSIGNED_SHORT;
                     accessor.type = "SCALAR";
                     accessor.count = indices.Length;
 
@@ -598,6 +607,7 @@ public class glTFExporter : EditorWindow
         for (int i = 0; i < cache.materials.Count; ++i)
         {
             Material material = cache.materials[i];
+            Shader shader = material.shader;
             JObject jmaterial = new JObject();
             materials.Add(jmaterial);
 
@@ -606,7 +616,181 @@ public class glTFExporter : EditorWindow
             JObject extras = new JObject();
             jmaterial["extras"] = extras;
 
-            extras["shader"] = material.shader.name;
+            extras["shader"] = shader.name;
+
+            JArray properties = new JArray();
+            extras["properties"] = properties;
+
+            int propertyCount = ShaderUtil.GetPropertyCount(shader);
+            for (int j = 0; j < propertyCount; ++j)
+            {
+                JObject property = new JObject();
+                properties.Add(property);
+
+                var type = ShaderUtil.GetPropertyType(shader, j);
+                var name = ShaderUtil.GetPropertyName(shader, j);
+
+                property["name"] = name;
+
+                JArray values = new JArray();
+                property["values"] = values;
+
+                if (type == ShaderUtil.ShaderPropertyType.TexEnv)
+                {
+                    var texture = material.GetTexture(name);
+                    if (texture)
+                    {
+                        property["type"] = "Texture";
+
+                        int index = cache.textures.IndexOf(texture);
+                        if (index < 0)
+                        {
+                            index = cache.textures.Count;
+                            cache.textures.Add(texture);
+                        }
+                        values.Add(index);
+                    }
+                }
+                else if (type == ShaderUtil.ShaderPropertyType.Float || type == ShaderUtil.ShaderPropertyType.Range)
+                {
+                    var value = material.GetFloat(name);
+                    property["type"] = "Float";
+
+                    values.Add(value);
+                }
+                else if (type == ShaderUtil.ShaderPropertyType.Vector)
+                {
+                    var value = material.GetVector(name);
+                    property["type"] = "Vector";
+
+                    values.Add(value.x);
+                    values.Add(value.y);
+                    values.Add(value.z);
+                    values.Add(value.w);
+                }
+                else if (type == ShaderUtil.ShaderPropertyType.Color)
+                {
+                    var value = material.GetColor(name);
+                    property["type"] = "Color";
+
+                    values.Add(value.r);
+                    values.Add(value.g);
+                    values.Add(value.b);
+                    values.Add(value.a);
+                }
+            }
+        }
+    }
+
+    enum SamplerType
+    {
+        LINEAR_CLAMP = 0,
+        LINEAR_REPEAT = 1,
+        LINEAR_CLAMP_MIPMAP = 2,
+        LINEAR_REPEAT_MIPMAP = 3,
+    }
+
+    void ExportSamplers(JObject gltf)
+    {
+        JArray samplers = new JArray();
+        gltf["samplers"] = samplers;
+
+        JObject sampler = new JObject();
+        samplers.Insert(0, sampler);
+        sampler["magFilter"] = GL_LINEAR;
+        sampler["minFilter"] = GL_LINEAR;
+        sampler["wrapS"] = GL_CLAMP_TO_EDGE;
+        sampler["wrapT"] = GL_CLAMP_TO_EDGE;
+
+        sampler = new JObject();
+        samplers.Insert(1, sampler);
+        sampler["magFilter"] = GL_LINEAR;
+        sampler["minFilter"] = GL_LINEAR;
+        sampler["wrapS"] = GL_REPEAT;
+        sampler["wrapT"] = GL_REPEAT;
+
+        sampler = new JObject();
+        samplers.Insert(2, sampler);
+        sampler["magFilter"] = GL_LINEAR;
+        sampler["minFilter"] = GL_LINEAR_MIPMAP_LINEAR;
+        sampler["wrapS"] = GL_CLAMP_TO_EDGE;
+        sampler["wrapT"] = GL_CLAMP_TO_EDGE;
+
+        sampler = new JObject();
+        samplers.Insert(3, sampler);
+        sampler["magFilter"] = GL_LINEAR;
+        sampler["minFilter"] = GL_LINEAR_MIPMAP_LINEAR;
+        sampler["wrapS"] = GL_REPEAT;
+        sampler["wrapT"] = GL_REPEAT;
+    }
+
+    void ExportTextures(JObject gltf)
+    {
+        JArray textures = new JArray();
+        gltf["textures"] = textures;
+
+        for (int i = 0; i < cache.textures.Count; ++i)
+        {
+            Texture texture = cache.textures[i];
+            JObject jtexture = new JObject();
+            textures.Add(jtexture);
+
+            jtexture["name"] = texture.name;
+
+            if (texture is Texture2D)
+            {
+                Texture2D tex2d = texture as Texture2D;
+                bool mipmap = tex2d.mipmapCount > 1;
+                int sampler = 0;
+
+                if (mipmap)
+                {
+                    if (texture.wrapMode == TextureWrapMode.Clamp)
+                    {
+                        sampler = (int) SamplerType.LINEAR_CLAMP_MIPMAP;
+                    }
+                    else
+                    {
+                        sampler = (int) SamplerType.LINEAR_REPEAT_MIPMAP;
+                    }
+                }
+                else
+                {
+                    if (texture.wrapMode == TextureWrapMode.Clamp)
+                    {
+                        sampler = (int) SamplerType.LINEAR_CLAMP;
+                    }
+                    else
+                    {
+                        sampler = (int) SamplerType.LINEAR_REPEAT;
+                    }
+                }
+
+                jtexture["sampler"] = sampler;
+                jtexture["source"] = i;
+            }
+        }
+    }
+
+    void ExportImages(JObject gltf)
+    {
+        JArray images = new JArray();
+        gltf["images"] = images;
+
+        for (int i = 0; i < cache.textures.Count; ++i)
+        {
+            Texture texture = cache.textures[i];
+            string assetPath = AssetDatabase.GetAssetPath(texture);
+            JObject jimage = new JObject();
+            images.Add(jimage);
+
+            string uri = new FileInfo(assetPath).Name;
+            jimage["uri"] = uri;
+
+            if (uri.EndsWith(".png") || uri.EndsWith(".PNG"))
+            {
+                File.Copy(assetPath, new FileInfo(gltfPath).Directory.FullName + "/" + uri);
+            }
         }
     }
 }
