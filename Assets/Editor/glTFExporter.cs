@@ -221,14 +221,14 @@ public class glTFExporter : EditorWindow
         return nodeIndex;
     }
 
-    void pushBufferVector2(Vector2[] vecs, out int offset, out int size)
+    void pushBufferUV(Vector2[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
         for (int i = 0; i < vecs.Length; ++i)
         {
             bw.Write(vecs[i].x);
-            bw.Write(vecs[i].y);
+            bw.Write(-vecs[i].y);
         }
 
         offset = cache.buffer.Count;
@@ -324,9 +324,12 @@ public class glTFExporter : EditorWindow
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
-        for (int i = 0; i < indices.Length; ++i)
+        int triangleCount = indices.Length / 3;
+        for (int i = 0; i < triangleCount; ++i)
         {
-            bw.Write((ushort) indices[i]);
+            bw.Write((ushort) indices[i * 3 + 0]);
+            bw.Write((ushort) indices[i * 3 + 1]);
+            bw.Write((ushort) indices[i * 3 + 2]);
         }
 
         offset = cache.buffer.Count;
@@ -435,7 +438,7 @@ public class glTFExporter : EditorWindow
 
                     if (uv.Length > 0)
                     {
-                        pushBufferVector2(mesh.uv, out offset, out size);
+                        pushBufferUV(mesh.uv, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -453,7 +456,7 @@ public class glTFExporter : EditorWindow
 
                     if (uv2.Length > 0)
                     {
-                        pushBufferVector2(mesh.uv2, out offset, out size);
+                        pushBufferUV(mesh.uv2, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -688,6 +691,10 @@ public class glTFExporter : EditorWindow
         LINEAR_REPEAT = 1,
         LINEAR_CLAMP_MIPMAP = 2,
         LINEAR_REPEAT_MIPMAP = 3,
+        NEAREST_CLAMP = 4,
+        NEAREST_REPEAT = 5,
+        NEAREST_CLAMP_MIPMAP = 6,
+        NEAREST_REPEAT_MIPMAP = 7,
     }
 
     void ExportSamplers(JObject gltf)
@@ -696,30 +703,58 @@ public class glTFExporter : EditorWindow
         gltf["samplers"] = samplers;
 
         JObject sampler = new JObject();
-        samplers.Insert(0, sampler);
+        samplers.Insert((int) SamplerType.LINEAR_CLAMP, sampler);
         sampler["magFilter"] = GL_LINEAR;
         sampler["minFilter"] = GL_LINEAR;
         sampler["wrapS"] = GL_CLAMP_TO_EDGE;
         sampler["wrapT"] = GL_CLAMP_TO_EDGE;
 
         sampler = new JObject();
-        samplers.Insert(1, sampler);
+        samplers.Insert((int) SamplerType.LINEAR_REPEAT, sampler);
         sampler["magFilter"] = GL_LINEAR;
         sampler["minFilter"] = GL_LINEAR;
         sampler["wrapS"] = GL_REPEAT;
         sampler["wrapT"] = GL_REPEAT;
 
         sampler = new JObject();
-        samplers.Insert(2, sampler);
+        samplers.Insert((int) SamplerType.LINEAR_CLAMP_MIPMAP, sampler);
         sampler["magFilter"] = GL_LINEAR;
         sampler["minFilter"] = GL_LINEAR_MIPMAP_LINEAR;
         sampler["wrapS"] = GL_CLAMP_TO_EDGE;
         sampler["wrapT"] = GL_CLAMP_TO_EDGE;
 
         sampler = new JObject();
-        samplers.Insert(3, sampler);
+        samplers.Insert((int) SamplerType.LINEAR_REPEAT_MIPMAP, sampler);
         sampler["magFilter"] = GL_LINEAR;
         sampler["minFilter"] = GL_LINEAR_MIPMAP_LINEAR;
+        sampler["wrapS"] = GL_REPEAT;
+        sampler["wrapT"] = GL_REPEAT;
+
+        sampler = new JObject();
+        samplers.Insert((int) SamplerType.NEAREST_CLAMP, sampler);
+        sampler["magFilter"] = GL_NEAREST;
+        sampler["minFilter"] = GL_NEAREST;
+        sampler["wrapS"] = GL_CLAMP_TO_EDGE;
+        sampler["wrapT"] = GL_CLAMP_TO_EDGE;
+
+        sampler = new JObject();
+        samplers.Insert((int) SamplerType.NEAREST_REPEAT, sampler);
+        sampler["magFilter"] = GL_NEAREST;
+        sampler["minFilter"] = GL_NEAREST;
+        sampler["wrapS"] = GL_REPEAT;
+        sampler["wrapT"] = GL_REPEAT;
+
+        sampler = new JObject();
+        samplers.Insert((int) SamplerType.NEAREST_CLAMP_MIPMAP, sampler);
+        sampler["magFilter"] = GL_NEAREST;
+        sampler["minFilter"] = GL_NEAREST_MIPMAP_NEAREST;
+        sampler["wrapS"] = GL_CLAMP_TO_EDGE;
+        sampler["wrapT"] = GL_CLAMP_TO_EDGE;
+
+        sampler = new JObject();
+        samplers.Insert((int) SamplerType.NEAREST_REPEAT_MIPMAP, sampler);
+        sampler["magFilter"] = GL_NEAREST;
+        sampler["minFilter"] = GL_NEAREST_MIPMAP_NEAREST;
         sampler["wrapS"] = GL_REPEAT;
         sampler["wrapT"] = GL_REPEAT;
     }
@@ -740,31 +775,10 @@ public class glTFExporter : EditorWindow
             if (texture is Texture2D)
             {
                 Texture2D tex2d = texture as Texture2D;
-                bool mipmap = tex2d.mipmapCount > 1;
-                int sampler = 0;
-
-                if (mipmap)
-                {
-                    if (texture.wrapMode == TextureWrapMode.Clamp)
-                    {
-                        sampler = (int) SamplerType.LINEAR_CLAMP_MIPMAP;
-                    }
-                    else
-                    {
-                        sampler = (int) SamplerType.LINEAR_REPEAT_MIPMAP;
-                    }
-                }
-                else
-                {
-                    if (texture.wrapMode == TextureWrapMode.Clamp)
-                    {
-                        sampler = (int) SamplerType.LINEAR_CLAMP;
-                    }
-                    else
-                    {
-                        sampler = (int) SamplerType.LINEAR_REPEAT;
-                    }
-                }
+                int mipmap = tex2d.mipmapCount > 1 ? 1 : 0;
+                int repeat = texture.wrapMode == TextureWrapMode.Clamp ? 0 : 1;
+                int nearest = texture.filterMode == FilterMode.Point ? 1 : 0;
+                int sampler = nearest * 4 + mipmap * 2 + repeat;
 
                 jtexture["sampler"] = sampler;
                 jtexture["source"] = i;
@@ -789,7 +803,7 @@ public class glTFExporter : EditorWindow
 
             if (uri.EndsWith(".png") || uri.EndsWith(".PNG"))
             {
-                File.Copy(assetPath, new FileInfo(gltfPath).Directory.FullName + "/" + uri);
+                File.Copy(assetPath, new FileInfo(gltfPath).Directory.FullName + "/" + uri, true);
             }
         }
     }
