@@ -31,6 +31,7 @@ public class glTFExporter : EditorWindow
         public List<byte> buffer = new List<byte>();
         public Dictionary<GameObject, int> nodes = new Dictionary<GameObject, int>();
         public List<Animation> animations = new List<Animation>();
+        public List<SkinnedMeshRenderer> skins = new List<SkinnedMeshRenderer>();
     }
 
     class glTFBufferView
@@ -119,6 +120,7 @@ public class glTFExporter : EditorWindow
         ExportGLTFNode(gltf["nodes"] as JArray, root);
         ExportMeshes(gltf);
         ExportAnimations(gltf);
+        ExportSkins(gltf);
         ExportAccessors(gltf);
         ExportMaterials(gltf);
         ExportSamplers(gltf);
@@ -249,7 +251,8 @@ public class glTFExporter : EditorWindow
     {
         ExportMeshRenderer(node, components, skinnedMeshRenderer.sharedMesh, skinnedMeshRenderer, "SkinnedMeshRenderer");
 
-
+        node["skin"] = cache.skins.Count;
+        cache.skins.Add(skinnedMeshRenderer);
     }
 
     void PushBufferUV(Vector2[] vecs, out int offset, out int size)
@@ -267,8 +270,11 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    void PushBufferVector3(Vector3[] vecs, out int offset, out int size)
+    void PushBufferVector3(Vector3[] vecs, out int offset, out int size, out Vector3 min, out Vector3 max)
     {
+        min = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        max = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
         for (int i = 0; i < vecs.Length; ++i)
@@ -276,6 +282,9 @@ public class glTFExporter : EditorWindow
             bw.Write(vecs[i].x);
             bw.Write(vecs[i].y);
             bw.Write(vecs[i].z);
+
+            min = Vector3.Min(min, vecs[i]);
+            max = Vector3.Max(max, vecs[i]);
         }
 
         offset = cache.buffer.Count;
@@ -382,6 +391,26 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
+    void PushBufferMatrices(Matrix4x4[] matrices, out int offset, out int size)
+    {
+        MemoryStream ms = new MemoryStream();
+        BinaryWriter bw = new BinaryWriter(ms);
+        for (int i = 0; i < matrices.Length; ++i)
+        {
+            for (int j = 0; j < 4; ++j)
+            {
+                for (int k = 0; k < 4; ++k)
+                {
+                    bw.Write(matrices[i][k, j]);
+                }
+            }
+        }
+
+        offset = cache.buffer.Count;
+        size = (int) ms.Length;
+        cache.buffer.AddRange(ms.ToArray());
+    }
+
     void ExportMeshes(JObject gltf)
     {
         JArray meshes = new JArray();
@@ -422,7 +451,9 @@ public class glTFExporter : EditorWindow
 
                     if (vertices.Length > 0)
                     {
-                        PushBufferVector3(mesh.vertices, out offset, out size);
+                        Vector3 min;
+                        Vector3 max;
+                        PushBufferVector3(mesh.vertices, out offset, out size, out min, out max);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -435,13 +466,12 @@ public class glTFExporter : EditorWindow
                         accessor.count = vertices.Length;
                         accessor.min = new float[3];
                         accessor.max = new float[3];
-                        var bounds = mesh.bounds;
-                        accessor.min[0] = bounds.min.x;
-                        accessor.min[1] = bounds.min.y;
-                        accessor.min[2] = bounds.min.z;
-                        accessor.max[0] = bounds.max.x;
-                        accessor.max[1] = bounds.max.y;
-                        accessor.max[2] = bounds.max.z;
+                        accessor.min[0] = min.x;
+                        accessor.min[1] = min.y;
+                        accessor.min[2] = min.z;
+                        accessor.max[0] = max.x;
+                        accessor.max[1] = max.y;
+                        accessor.max[2] = max.z;
 
                         attributes["POSITION"] = cache.accessors.Count;
                         cache.accessors.Add(accessor);
@@ -449,7 +479,9 @@ public class glTFExporter : EditorWindow
 
                     if (normals.Length > 0)
                     {
-                        PushBufferVector3(mesh.normals, out offset, out size);
+                        Vector3 min;
+                        Vector3 max;
+                        PushBufferVector3(mesh.normals, out offset, out size, out min, out max);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -1152,6 +1184,53 @@ public class glTFExporter : EditorWindow
             accessor.count = values.Length / curves.Length;
 
             jsampler["output"] = cache.accessors.Count;
+            cache.accessors.Add(accessor);
+        }
+    }
+
+    void ExportSkins(JObject gltf)
+    {
+        JArray skins = new JArray();
+        gltf["skins"] = skins;
+
+        for (int i = 0; i < cache.skins.Count; ++i)
+        {
+            var skin = cache.skins[i];
+            JObject jskin = new JObject();
+            skins.Add(jskin);
+
+            JArray joints = new JArray();
+            jskin["joints"] = joints;
+  
+            var root = skin.rootBone;
+            var bones = skin.bones;
+            var bindposes = skin.sharedMesh.bindposes;
+
+            if (root)
+            {
+                jskin["skeleton"] = cache.nodes[root.gameObject];
+            }
+
+            for (int j = 0; j < bones.Length; ++j)
+            {
+                joints.Add(cache.nodes[bones[j].gameObject]);
+            }
+
+            int offset;
+            int size;
+            PushBufferMatrices(bindposes, out offset, out size);
+
+            glTFAccessor accessor = new glTFAccessor();
+            accessor.bufferViewObject.byteOffset = offset;
+            accessor.bufferViewObject.byteLength = size;
+            accessor.bufferViewObject.byteStride = -1;
+            accessor.bufferViewObject.target = -1;
+            accessor.bufferView = cache.accessors.Count;
+            accessor.componentType = GL_FLOAT;
+            accessor.type = "MAT4";
+            accessor.count = bindposes.Length;
+
+            jskin["inverseBindMatrices"] = cache.accessors.Count;
             cache.accessors.Add(accessor);
         }
     }
