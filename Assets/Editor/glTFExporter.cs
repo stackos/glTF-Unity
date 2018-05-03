@@ -28,6 +28,8 @@ public class glTFExporter : EditorWindow
         public List<Texture> textures = new List<Texture>();
         public List<glTFAccessor> accessors = new List<glTFAccessor>();
         public List<byte> buffer = new List<byte>();
+        public Dictionary<GameObject, int> nodes = new Dictionary<GameObject, int>();
+        public List<Animation> animations = new List<Animation>();
     }
 
     class glTFBufferView
@@ -47,8 +49,8 @@ public class glTFExporter : EditorWindow
         public int componentType;
         public string type; // SCALAR VEC2 VEC3 VEC4 MAT4
         public int count;
-        // min
-        // max
+        public float[] min;
+        public float[] max;
     }
 
     [MenuItem("glTF/Exporter")]
@@ -115,6 +117,7 @@ public class glTFExporter : EditorWindow
         cache = new Cache();
         ExportGLTFNode(gltf["nodes"] as JArray, root);
         ExportMeshes(gltf);
+        ExportAnimations(gltf);
         ExportAccessors(gltf);
         ExportMaterials(gltf);
         ExportSamplers(gltf);
@@ -133,6 +136,7 @@ public class glTFExporter : EditorWindow
         JObject node = new JObject();
         int nodeIndex = nodes.Count;
         nodes.Add(node);
+        cache.nodes.Add(obj, nodeIndex);
 
         node["name"] = obj.name;
 
@@ -161,47 +165,19 @@ public class glTFExporter : EditorWindow
         JArray components = new JArray();
         extras["components"] = components;
 
-        MeshRenderer meshRenderer = obj.GetComponent<MeshRenderer>();
         MeshFilter meshFilter = obj.GetComponent<MeshFilter>();
+        MeshRenderer meshRenderer = obj.GetComponent<MeshRenderer>();
+        Animation animation = obj.GetComponent<Animation>();
         SkinnedMeshRenderer skinnedMeshRenderer = obj.GetComponent<SkinnedMeshRenderer>();
 
         if (meshRenderer && meshFilter)
         {
-            Mesh mesh = meshFilter.sharedMesh;
-            if (mesh)
-            {
-                int index = cache.meshes.IndexOf(mesh);
-                if (index < 0)
-                {
-                    index = cache.meshes.Count;
-                    cache.meshes.Add(mesh);
-                }
-                node["mesh"] = index;
-            }
+            ExportMeshRenderer(node, components, meshFilter, meshRenderer);
+        }
 
-            JObject component = new JObject();
-            components.Add(component);
-
-            component["typeName"] = "MeshRenderer";
-            JArray materials = new JArray();
-            component["materials"] = materials;
-
-            var mats = meshRenderer.sharedMaterials;
-            for (int i = 0; i < mats.Length; ++i)
-            {
-                int index = -1;
-                Material mat = mats[i];
-                if (mat)
-                {
-                    index = cache.materials.IndexOf(mat);
-                    if (index < 0)
-                    {
-                        index = cache.materials.Count;
-                        cache.materials.Add(mat);
-                    }
-                }
-                materials.Add(index);
-            }
+        if (animation)
+        {
+            cache.animations.Add(animation);
         }
 
         int childCount = transform.childCount;
@@ -221,7 +197,46 @@ public class glTFExporter : EditorWindow
         return nodeIndex;
     }
 
-    void pushBufferUV(Vector2[] vecs, out int offset, out int size)
+    void ExportMeshRenderer(JObject node, JArray components, MeshFilter meshFilter, MeshRenderer meshRenderer)
+    {
+        Mesh mesh = meshFilter.sharedMesh;
+        if (mesh)
+        {
+            int index = cache.meshes.IndexOf(mesh);
+            if (index < 0)
+            {
+                index = cache.meshes.Count;
+                cache.meshes.Add(mesh);
+            }
+            node["mesh"] = index;
+        }
+
+        JObject component = new JObject();
+        components.Add(component);
+
+        component["typeName"] = "MeshRenderer";
+        JArray materials = new JArray();
+        component["materials"] = materials;
+
+        var mats = meshRenderer.sharedMaterials;
+        for (int i = 0; i < mats.Length; ++i)
+        {
+            int index = -1;
+            Material mat = mats[i];
+            if (mat)
+            {
+                index = cache.materials.IndexOf(mat);
+                if (index < 0)
+                {
+                    index = cache.materials.Count;
+                    cache.materials.Add(mat);
+                }
+            }
+            materials.Add(index);
+        }
+    }
+
+    void PushBufferUV(Vector2[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
@@ -236,7 +251,7 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    void pushBufferVector3(Vector3[] vecs, out int offset, out int size)
+    void PushBufferVector3(Vector3[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
@@ -252,7 +267,7 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    void pushBufferVector4(Vector4[] vecs, out int offset, out int size)
+    void PushBufferVector4(Vector4[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
@@ -269,7 +284,7 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    void pushBufferColor(Color[] vecs, out int offset, out int size)
+    void PushBufferColor(Color[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
@@ -286,7 +301,7 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    void pushBufferJoints(BoneWeight[] vecs, out int offset, out int size)
+    void PushBufferJoints(BoneWeight[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
@@ -303,7 +318,7 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    void pushBufferWeights(BoneWeight[] vecs, out int offset, out int size)
+    void PushBufferWeights(BoneWeight[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
@@ -320,7 +335,7 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    void pushBufferIndices(int[] indices, out int offset, out int size)
+    void PushBufferIndices(int[] indices, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
         BinaryWriter bw = new BinaryWriter(ms);
@@ -337,11 +352,18 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
-    int pushBuffer(byte[] data)
+    void PushBufferFloats(float[] floats, out int offset, out int size)
     {
-        int offset = cache.buffer.Count;
-        cache.buffer.AddRange(data);
-        return offset;
+        MemoryStream ms = new MemoryStream();
+        BinaryWriter bw = new BinaryWriter(ms);
+        for (int i = 0; i < floats.Length; ++i)
+        {
+            bw.Write(floats[i]);
+        }
+
+        offset = cache.buffer.Count;
+        size = (int) ms.Length;
+        cache.buffer.AddRange(ms.ToArray());
     }
 
     void ExportMeshes(JObject gltf)
@@ -384,7 +406,7 @@ public class glTFExporter : EditorWindow
 
                     if (vertices.Length > 0)
                     {
-                        pushBufferVector3(mesh.vertices, out offset, out size);
+                        PushBufferVector3(mesh.vertices, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -395,6 +417,15 @@ public class glTFExporter : EditorWindow
                         accessor.componentType = GL_FLOAT;
                         accessor.type = "VEC3";
                         accessor.count = vertices.Length;
+                        accessor.min = new float[3];
+                        accessor.max = new float[3];
+                        var bounds = mesh.bounds;
+                        accessor.min[0] = bounds.min.x;
+                        accessor.min[1] = bounds.min.y;
+                        accessor.min[2] = bounds.min.z;
+                        accessor.max[0] = bounds.max.x;
+                        accessor.max[1] = bounds.max.y;
+                        accessor.max[2] = bounds.max.z;
 
                         attributes["POSITION"] = cache.accessors.Count;
                         cache.accessors.Add(accessor);
@@ -402,7 +433,7 @@ public class glTFExporter : EditorWindow
 
                     if (normals.Length > 0)
                     {
-                        pushBufferVector3(mesh.normals, out offset, out size);
+                        PushBufferVector3(mesh.normals, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -420,7 +451,7 @@ public class glTFExporter : EditorWindow
 
                     if (tangents.Length > 0)
                     {
-                        pushBufferVector4(mesh.tangents, out offset, out size);
+                        PushBufferVector4(mesh.tangents, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -438,7 +469,7 @@ public class glTFExporter : EditorWindow
 
                     if (uv.Length > 0)
                     {
-                        pushBufferUV(mesh.uv, out offset, out size);
+                        PushBufferUV(mesh.uv, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -456,7 +487,7 @@ public class glTFExporter : EditorWindow
 
                     if (uv2.Length > 0)
                     {
-                        pushBufferUV(mesh.uv2, out offset, out size);
+                        PushBufferUV(mesh.uv2, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -474,7 +505,7 @@ public class glTFExporter : EditorWindow
 
                     if (colors.Length > 0)
                     {
-                        pushBufferColor(mesh.colors, out offset, out size);
+                        PushBufferColor(mesh.colors, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -492,7 +523,7 @@ public class glTFExporter : EditorWindow
 
                     if (boneWeights.Length > 0)
                     {
-                        pushBufferJoints(mesh.boneWeights, out offset, out size);
+                        PushBufferJoints(mesh.boneWeights, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -510,7 +541,7 @@ public class glTFExporter : EditorWindow
 
                     if (boneWeights.Length > 0)
                     {
-                        pushBufferWeights(mesh.boneWeights, out offset, out size);
+                        PushBufferWeights(mesh.boneWeights, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -533,12 +564,12 @@ public class glTFExporter : EditorWindow
                     int offset;
                     int size;
 
-                    pushBufferIndices(indices, out offset, out size);
+                    PushBufferIndices(indices, out offset, out size);
 
                     glTFAccessor accessor = new glTFAccessor();
                     accessor.bufferViewObject.byteOffset = offset;
                     accessor.bufferViewObject.byteLength = size;
-                    accessor.bufferViewObject.byteStride = size / indices.Length;
+                    accessor.bufferViewObject.byteStride = -1;
                     accessor.bufferViewObject.target = GL_ELEMENT_ARRAY_BUFFER;
                     accessor.bufferView = cache.accessors.Count;
                     accessor.componentType = GL_UNSIGNED_SHORT;
@@ -570,6 +601,28 @@ public class glTFExporter : EditorWindow
             jaccessor["componentType"] = a.componentType;
             jaccessor["type"] = a.type;
             jaccessor["count"] = a.count;
+
+            if (a.min != null)
+            {
+                JArray min = new JArray();
+                jaccessor["min"] = min;
+
+                for (int j = 0; j < a.min.Length; ++j)
+                {
+                    min.Add(a.min[j]);
+                }
+            }
+
+            if (a.max != null)
+            {
+                JArray max = new JArray();
+                jaccessor["max"] = max;
+
+                for (int j = 0; j < a.max.Length; ++j)
+                {
+                    max.Add(a.max[j]);
+                }
+            }
         }
 
         JArray bufferViews = new JArray();
@@ -584,8 +637,16 @@ public class glTFExporter : EditorWindow
             jview["buffer"] = v.buffer;
             jview["byteOffset"] = v.byteOffset;
             jview["byteLength"] = v.byteLength;
-            jview["byteStride"] = v.byteStride;
-            jview["target"] = v.target;
+
+            if (v.byteStride > 0)
+            {
+                jview["byteStride"] = v.byteStride;
+            }
+
+            if (v.target >= 0)
+            {
+                jview["target"] = v.target;
+            }
         }
 
         JArray buffers = new JArray();
@@ -761,50 +822,296 @@ public class glTFExporter : EditorWindow
 
     void ExportTextures(JObject gltf)
     {
-        JArray textures = new JArray();
-        gltf["textures"] = textures;
-
-        for (int i = 0; i < cache.textures.Count; ++i)
+        if (cache.textures.Count > 0)
         {
-            Texture texture = cache.textures[i];
-            JObject jtexture = new JObject();
-            textures.Add(jtexture);
+            JArray textures = new JArray();
+            gltf["textures"] = textures;
 
-            jtexture["name"] = texture.name;
-
-            if (texture is Texture2D)
+            for (int i = 0; i < cache.textures.Count; ++i)
             {
-                Texture2D tex2d = texture as Texture2D;
-                int mipmap = tex2d.mipmapCount > 1 ? 1 : 0;
-                int repeat = texture.wrapMode == TextureWrapMode.Clamp ? 0 : 1;
-                int nearest = texture.filterMode == FilterMode.Point ? 1 : 0;
-                int sampler = nearest * 4 + mipmap * 2 + repeat;
+                Texture texture = cache.textures[i];
+                JObject jtexture = new JObject();
+                textures.Add(jtexture);
 
-                jtexture["sampler"] = sampler;
-                jtexture["source"] = i;
+                jtexture["name"] = texture.name;
+
+                if (texture is Texture2D)
+                {
+                    Texture2D tex2d = texture as Texture2D;
+                    int mipmap = tex2d.mipmapCount > 1 ? 1 : 0;
+                    int repeat = texture.wrapMode == TextureWrapMode.Clamp ? 0 : 1;
+                    int nearest = texture.filterMode == FilterMode.Point ? 1 : 0;
+                    int sampler = nearest * 4 + mipmap * 2 + repeat;
+
+                    jtexture["sampler"] = sampler;
+                    jtexture["source"] = i;
+                }
             }
-        }
+        }  
     }
 
     void ExportImages(JObject gltf)
     {
-        JArray images = new JArray();
-        gltf["images"] = images;
-
-        for (int i = 0; i < cache.textures.Count; ++i)
+        if (cache.textures.Count > 0)
         {
-            Texture texture = cache.textures[i];
-            string assetPath = AssetDatabase.GetAssetPath(texture);
-            JObject jimage = new JObject();
-            images.Add(jimage);
+            JArray images = new JArray();
+            gltf["images"] = images;
 
-            string uri = new FileInfo(assetPath).Name;
-            jimage["uri"] = uri;
-
-            if (uri.EndsWith(".png") || uri.EndsWith(".PNG"))
+            for (int i = 0; i < cache.textures.Count; ++i)
             {
-                File.Copy(assetPath, new FileInfo(gltfPath).Directory.FullName + "/" + uri, true);
+                Texture texture = cache.textures[i];
+                string assetPath = AssetDatabase.GetAssetPath(texture);
+                JObject jimage = new JObject();
+                images.Add(jimage);
+
+                string uri = new FileInfo(assetPath).Name;
+                jimage["uri"] = uri;
+
+                if (uri.EndsWith(".png") || uri.EndsWith(".PNG"))
+                {
+                    File.Copy(assetPath, new FileInfo(gltfPath).Directory.FullName + "/" + uri, true);
+                }
             }
+        }
+    }
+
+    class AnimationChannel
+    {
+        public int node;
+        public AnimationCurve[] translation = new AnimationCurve[3];
+        public AnimationCurve[] rotation = new AnimationCurve[4];
+        public AnimationCurve[] scale = new AnimationCurve[3];
+        public AnimationCurve[] weights = new AnimationCurve[1];
+    }
+
+    void ExportAnimations(JObject gltf)
+    {
+        JArray animations = new JArray();
+        gltf["animations"] = animations;
+
+        for (int i = 0; i < cache.animations.Count; ++i)
+        {
+            Animation animation = cache.animations[i];
+            JObject janimation = new JObject();
+            animations.Add(janimation);
+
+            JArray channels = new JArray();
+            janimation["channels"] = channels;
+
+            JArray samplers = new JArray();
+            janimation["samplers"] = samplers;
+
+            Dictionary<string, AnimationChannel> channelMap = new Dictionary<string, AnimationChannel>();
+
+            var clips = AnimationUtility.GetAnimationClips(animation.gameObject);
+            for (int j = 0; j < clips.Length; ++j)
+            {
+                var clip = clips[j];
+                var bindings = AnimationUtility.GetCurveBindings(clip);
+                for (int k = 0; k < bindings.Length; ++k)
+                {
+                    var bind = bindings[k];
+
+                    AnimationChannel channel;
+                    if (channelMap.TryGetValue(bind.path, out channel) == false)
+                    {
+                        channel = new AnimationChannel();
+                        channel.node = cache.nodes[animation.transform.Find(bind.path).gameObject];
+                        channelMap.Add(bind.path, channel);
+                    }
+
+                    var curve = AnimationUtility.GetEditorCurve(clip, bind);
+
+                    switch (bind.propertyName)
+                    {
+                        case "m_LocalPosition.x":
+                            channel.translation[0] = curve;
+                            break;
+                        case "m_LocalPosition.y":
+                            channel.translation[1] = curve;
+                            break;
+                        case "m_LocalPosition.z":
+                            channel.translation[2] = curve;
+                            break;
+
+                        case "m_LocalRotation.x":
+                            channel.rotation[0] = curve;
+                            break;
+                        case "m_LocalRotation.y":
+                            channel.rotation[1] = curve;
+                            break;
+                        case "m_LocalRotation.z":
+                            channel.rotation[2] = curve;
+                            break;
+                        case "m_LocalRotation.w":
+                            channel.rotation[3] = curve;
+                            break;
+
+                        case "m_LocalScale.x":
+                            channel.scale[0] = curve;
+                            break;
+                        case "m_LocalScale.y":
+                            channel.scale[1] = curve;
+                            break;
+                        case "m_LocalScale.z":
+                            channel.scale[2] = curve;
+                            break;
+                    }
+                }
+            }
+
+            List<string> pathes = new List<string>();
+            pathes.AddRange(channelMap.Keys);
+            pathes.Sort();
+
+            for (int j = 0; j < pathes.Count; ++j)
+            {
+                AnimationChannel channel = channelMap[pathes[j]];
+
+                if (channel.translation[0] != null)
+                {
+                    ExportCurveSampler(channels, samplers, channel, channel.translation, "translation");
+                }
+
+                if (channel.rotation[0] != null)
+                {
+                    ExportCurveSampler(channels, samplers, channel, channel.rotation, "rotation");
+                }
+
+                if (channel.scale[0] != null)
+                {
+                    ExportCurveSampler(channels, samplers, channel, channel.scale, "scale");
+                }
+
+                if (channel.weights[0] != null)
+                {
+                    ExportCurveSampler(channels, samplers, channel, channel.weights, "weights");
+                }
+            }
+        }
+    }
+
+    void ExportCurveSampler(JArray channels, JArray samplers, AnimationChannel channel, AnimationCurve[] curves, string path)
+    {
+        JObject jchannel = new JObject();
+        channels.Add(jchannel);
+
+        JObject jtarget = new JObject();
+        jchannel["target"] = jtarget;
+        jchannel["sampler"] = samplers.Count;
+
+        jtarget["node"] = channel.node;
+        jtarget["path"] = path;
+
+        JObject jsampler = new JObject();
+        samplers.Add(jsampler);
+
+        bool CUBICSPLINE = true;
+        int outCount;
+
+        if (CUBICSPLINE)
+        {
+            jsampler["interpolation"] = "CUBICSPLINE";
+            outCount = 3;
+        }
+        else
+        {
+            jsampler["interpolation"] = "LINEAR";
+            outCount = 1;
+        }
+        
+        var keys = curves[0].keys;
+        float[] times = new float[keys.Length];
+        for (int i = 0; i < keys.Length; ++i)
+        {
+            times[i] = keys[i].time;
+        }
+
+        float[] values = new float[keys.Length * curves.Length * outCount];
+        for (int i = 0; i < keys.Length; ++i)
+        {
+            for (int j = 0; j < outCount; ++j)
+            {
+                for (int k = 0; k < curves.Length; ++k)
+                {
+                    var key = curves[k].keys[i];
+                    float value = 0;
+
+                    if (outCount == 3)
+                    {
+                        switch (j)
+                        {
+                            case 0:
+                                value = key.inTangent;
+                                break;
+                            case 1:
+                                value = key.value;
+                                break;
+                            case 2:
+                                value = key.outTangent;
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        value = key.value;
+                    }
+
+                    values[i * outCount * curves.Length + j * curves.Length + k] = value;
+                }
+            }
+        }
+
+        int offset;
+        int size;
+
+        {
+            PushBufferFloats(times, out offset, out size);
+
+            glTFAccessor accessor = new glTFAccessor();
+            accessor.bufferViewObject.byteOffset = offset;
+            accessor.bufferViewObject.byteLength = size;
+            accessor.bufferViewObject.byteStride = -1;
+            accessor.bufferViewObject.target = -1;
+            accessor.bufferView = cache.accessors.Count;
+            accessor.componentType = GL_FLOAT;
+            accessor.type = "SCALAR";
+            accessor.count = times.Length;
+            accessor.min = new float[1];
+            accessor.max = new float[1];
+            accessor.min[0] = times[0];
+            accessor.max[0] = times[times.Length - 1];
+
+            jsampler["input"] = cache.accessors.Count;
+            cache.accessors.Add(accessor);
+        }
+
+        {
+            PushBufferFloats(values, out offset, out size);
+
+            glTFAccessor accessor = new glTFAccessor();
+            accessor.bufferViewObject.byteOffset = offset;
+            accessor.bufferViewObject.byteLength = size;
+            accessor.bufferViewObject.byteStride = -1;
+            accessor.bufferViewObject.target = -1;
+            accessor.bufferView = cache.accessors.Count;
+            accessor.componentType = GL_FLOAT;
+            if (curves.Length == 1)
+            {
+                accessor.type = "SCALAR";
+            }
+            else if (curves.Length == 3)
+            {
+                accessor.type = "VEC3";
+            }
+            else if (curves.Length == 4)
+            {
+                accessor.type = "VEC4";
+            }
+            accessor.count = values.Length / curves.Length;
+
+            jsampler["output"] = cache.accessors.Count;
+            cache.accessors.Add(accessor);
         }
     }
 }
