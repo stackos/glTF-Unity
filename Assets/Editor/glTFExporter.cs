@@ -24,6 +24,7 @@ public class glTFExporter : EditorWindow
     class Cache
     {
         public List<Mesh> meshes = new List<Mesh>();
+        public List<List<int>> meshMaterials = new List<List<int>>();
         public List<Material> materials = new List<Material>();
         public List<Texture> textures = new List<Texture>();
         public List<glTFAccessor> accessors = new List<glTFAccessor>();
@@ -172,12 +173,17 @@ public class glTFExporter : EditorWindow
 
         if (meshRenderer && meshFilter)
         {
-            ExportMeshRenderer(node, components, meshFilter, meshRenderer);
+            ExportMeshRenderer(node, components, meshFilter.sharedMesh, meshRenderer, "MeshRenderer");
         }
 
         if (animation)
         {
             cache.animations.Add(animation);
+        }
+
+        if (skinnedMeshRenderer)
+        {
+            ExportSkinnedMeshRenderer(node, components, skinnedMeshRenderer);
         }
 
         int childCount = transform.childCount;
@@ -197,28 +203,18 @@ public class glTFExporter : EditorWindow
         return nodeIndex;
     }
 
-    void ExportMeshRenderer(JObject node, JArray components, MeshFilter meshFilter, MeshRenderer meshRenderer)
+    void ExportMeshRenderer(JObject node, JArray components, Mesh mesh, Renderer renderer, string typeName)
     {
-        Mesh mesh = meshFilter.sharedMesh;
-        if (mesh)
-        {
-            int index = cache.meshes.IndexOf(mesh);
-            if (index < 0)
-            {
-                index = cache.meshes.Count;
-                cache.meshes.Add(mesh);
-            }
-            node["mesh"] = index;
-        }
+        List<int> meshMaterials = new List<int>();
 
         JObject component = new JObject();
         components.Add(component);
 
-        component["typeName"] = "MeshRenderer";
+        component["typeName"] = typeName;
         JArray materials = new JArray();
         component["materials"] = materials;
 
-        var mats = meshRenderer.sharedMaterials;
+        var mats = renderer.sharedMaterials;
         for (int i = 0; i < mats.Length; ++i)
         {
             int index = -1;
@@ -233,7 +229,27 @@ public class glTFExporter : EditorWindow
                 }
             }
             materials.Add(index);
+            meshMaterials.Add(index);
         }
+
+        if (mesh)
+        {
+            int index = cache.meshes.IndexOf(mesh);
+            if (index < 0)
+            {
+                index = cache.meshes.Count;
+                cache.meshes.Add(mesh);
+                cache.meshMaterials.Add(meshMaterials);
+            }
+            node["mesh"] = index;
+        }
+    }
+
+    void ExportSkinnedMeshRenderer(JObject node, JArray components, SkinnedMeshRenderer skinnedMeshRenderer)
+    {
+        ExportMeshRenderer(node, components, skinnedMeshRenderer.sharedMesh, skinnedMeshRenderer, "SkinnedMeshRenderer");
+
+
     }
 
     void PushBufferUV(Vector2[] vecs, out int offset, out int size)
@@ -581,6 +597,7 @@ public class glTFExporter : EditorWindow
                 }
 
                 primitive["mode"] = 4;
+                primitive["material"] = cache.meshMaterials[i][j];
             }
         }
     }
@@ -685,6 +702,8 @@ public class glTFExporter : EditorWindow
             JArray properties = new JArray();
             extras["properties"] = properties;
 
+            int mainTextureIndex = -1;
+
             int propertyCount = ShaderUtil.GetPropertyCount(shader);
             for (int j = 0; j < propertyCount; ++j)
             {
@@ -713,6 +732,11 @@ public class glTFExporter : EditorWindow
                             cache.textures.Add(texture);
                         }
                         values.Add(index);
+
+                        if (texture == material.mainTexture)
+                        {
+                            mainTextureIndex = index;
+                        }
                     }
                 }
                 else if (type == ShaderUtil.ShaderPropertyType.Float || type == ShaderUtil.ShaderPropertyType.Range)
@@ -742,6 +766,15 @@ public class glTFExporter : EditorWindow
                     values.Add(value.b);
                     values.Add(value.a);
                 }
+            }
+
+            if (mainTextureIndex >= 0)
+            {
+                JObject pbrMetallicRoughness = new JObject();
+                jmaterial["pbrMetallicRoughness"] = pbrMetallicRoughness;
+                JObject baseColorTexture = new JObject();
+                pbrMetallicRoughness["baseColorTexture"] = baseColorTexture;
+                baseColorTexture["index"] = mainTextureIndex;
             }
         }
     }
