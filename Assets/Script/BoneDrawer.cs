@@ -13,7 +13,6 @@ public class BoneDrawer : MonoBehaviour
         if (bones == null || bones.Length == 0)
         {
             bones = skin.bones;
-            skin.enabled = false;
 
             var mat = new Material(Shader.Find("Unlit/Color"));
             mat.SetColor("_Color", Color.green);

@@ -892,21 +892,29 @@ public class glTFExporter : EditorWindow
         for (int i = 0; i < cache.animations.Count; ++i)
         {
             Animation animation = cache.animations[i];
-            JObject janimation = new JObject();
-            animations.Add(janimation);
-
-            JArray channels = new JArray();
-            janimation["channels"] = channels;
-
-            JArray samplers = new JArray();
-            janimation["samplers"] = samplers;
-
-            Dictionary<string, AnimationChannel> channelMap = new Dictionary<string, AnimationChannel>();
-
             var clips = AnimationUtility.GetAnimationClips(animation.gameObject);
             for (int j = 0; j < clips.Length; ++j)
             {
                 var clip = clips[j];
+
+                JObject janimation = new JObject();
+                animations.Add(janimation);
+
+                janimation["name"] = clip.name;
+
+                JArray channels = new JArray();
+                janimation["channels"] = channels;
+
+                JArray samplers = new JArray();
+                janimation["samplers"] = samplers;
+
+                JObject extras = new JObject();
+                janimation["extras"] = extras;
+
+                extras["target"] = cache.nodes[animation.gameObject];
+
+                Dictionary<string, AnimationChannel> channelMap = new Dictionary<string, AnimationChannel>();
+
                 var bindings = AnimationUtility.GetCurveBindings(clip);
                 for (int k = 0; k < bindings.Length; ++k)
                 {
@@ -958,34 +966,34 @@ public class glTFExporter : EditorWindow
                             break;
                     }
                 }
-            }
 
-            List<string> pathes = new List<string>();
-            pathes.AddRange(channelMap.Keys);
-            pathes.Sort();
+                List<string> pathes = new List<string>();
+                pathes.AddRange(channelMap.Keys);
+                pathes.Sort();
 
-            for (int j = 0; j < pathes.Count; ++j)
-            {
-                AnimationChannel channel = channelMap[pathes[j]];
-
-                if (channel.translation[0] != null)
+                for (int k = 0; k < pathes.Count; ++k)
                 {
-                    ExportCurveSampler(channels, samplers, channel, channel.translation, "translation");
-                }
+                    AnimationChannel channel = channelMap[pathes[k]];
 
-                if (channel.rotation[0] != null)
-                {
-                    ExportCurveSampler(channels, samplers, channel, channel.rotation, "rotation");
-                }
+                    if (channel.translation[0] != null)
+                    {
+                        ExportCurveSampler(channels, samplers, channel, channel.translation, "translation");
+                    }
 
-                if (channel.scale[0] != null)
-                {
-                    ExportCurveSampler(channels, samplers, channel, channel.scale, "scale");
-                }
+                    if (channel.rotation[0] != null)
+                    {
+                        ExportCurveSampler(channels, samplers, channel, channel.rotation, "rotation");
+                    }
 
-                if (channel.weights[0] != null)
-                {
-                    ExportCurveSampler(channels, samplers, channel, channel.weights, "weights");
+                    if (channel.scale[0] != null)
+                    {
+                        ExportCurveSampler(channels, samplers, channel, channel.scale, "scale");
+                    }
+
+                    if (channel.weights[0] != null)
+                    {
+                        ExportCurveSampler(channels, samplers, channel, channel.weights, "weights");
+                    }
                 }
             }
         }

@@ -149,7 +149,8 @@ ModelImporter:
     2100002: asdf1_Beta_HighLimbsGeoSG2
     4300000: Beta_Joints
     4300002: Beta_Surface
-    7400000: mixamo.com
+    7400000: clip0
+    7400002: clip1
     9500000: //RootNode
     11100000: //RootNode
     13700000: Beta_Joints
@@ -182,9 +183,37 @@ ModelImporter:
     extraUserProperties: []
     clipAnimations:
     - serializedVersion: 16
-      name: mixamo.com
+      name: clip0
       takeName: mixamo.com
       firstFrame: 0
+      lastFrame: 250
+      wrapMode: 2
+      orientationOffsetY: 0
+      level: 0
+      cycleOffset: 0
+      loop: 0
+      hasAdditiveReferencePose: 0
+      loopTime: 0
+      loopBlend: 0
+      loopBlendOrientation: 0
+      loopBlendPositionY: 0
+      loopBlendPositionXZ: 0
+      keepOriginalOrientation: 0
+      keepOriginalPositionY: 1
+      keepOriginalPositionXZ: 0
+      heightFromFeet: 0
+      mirror: 0
+      bodyMask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000
+      curves: []
+      events: []
+      transformMask: []
+      maskType: 3
+      maskSource: {instanceID: 0}
+      additiveReferencePoseFrame: 0
+    - serializedVersion: 16
+      name: clip1
+      takeName: mixamo.com
+      firstFrame: 250
       lastFrame: 508
       wrapMode: 2
       orientationOffsetY: 0
