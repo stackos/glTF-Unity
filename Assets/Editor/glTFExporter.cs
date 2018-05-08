@@ -411,6 +411,15 @@ public class glTFExporter : EditorWindow
         cache.buffer.AddRange(ms.ToArray());
     }
 
+    class BlendShape
+    {
+        public string name;
+        public Vector3[] deltaVertices;
+        public Vector3[] deltaNormals;
+        public Vector3[] deltaTangents;
+        public float weight;
+    }
+
     void ExportMeshes(JObject gltf)
     {
         JArray meshes = new JArray();
@@ -427,6 +436,8 @@ public class glTFExporter : EditorWindow
 
             JArray primitives = new JArray();
             jmesh["primitives"] = primitives;
+
+            List<BlendShape> shapes = new List<BlendShape>();
 
             for (int j = 0; j < mesh.subMeshCount; ++j)
             {
@@ -453,7 +464,7 @@ public class glTFExporter : EditorWindow
                     {
                         Vector3 min;
                         Vector3 max;
-                        PushBufferVector3(mesh.vertices, out offset, out size, out min, out max);
+                        PushBufferVector3(vertices, out offset, out size, out min, out max);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -481,7 +492,7 @@ public class glTFExporter : EditorWindow
                     {
                         Vector3 min;
                         Vector3 max;
-                        PushBufferVector3(mesh.normals, out offset, out size, out min, out max);
+                        PushBufferVector3(normals, out offset, out size, out min, out max);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -499,7 +510,7 @@ public class glTFExporter : EditorWindow
 
                     if (tangents.Length > 0)
                     {
-                        PushBufferVector4(mesh.tangents, out offset, out size);
+                        PushBufferVector4(tangents, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -517,7 +528,7 @@ public class glTFExporter : EditorWindow
 
                     if (uv.Length > 0)
                     {
-                        PushBufferUV(mesh.uv, out offset, out size);
+                        PushBufferUV(uv, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -535,7 +546,7 @@ public class glTFExporter : EditorWindow
 
                     if (uv2.Length > 0)
                     {
-                        PushBufferUV(mesh.uv2, out offset, out size);
+                        PushBufferUV(uv2, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -553,7 +564,7 @@ public class glTFExporter : EditorWindow
 
                     if (colors.Length > 0)
                     {
-                        PushBufferColor(mesh.colors, out offset, out size);
+                        PushBufferColor(colors, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -571,7 +582,7 @@ public class glTFExporter : EditorWindow
 
                     if (boneWeights.Length > 0)
                     {
-                        PushBufferJoints(mesh.boneWeights, out offset, out size);
+                        PushBufferJoints(boneWeights, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -589,7 +600,7 @@ public class glTFExporter : EditorWindow
 
                     if (boneWeights.Length > 0)
                     {
-                        PushBufferWeights(mesh.boneWeights, out offset, out size);
+                        PushBufferWeights(boneWeights, out offset, out size);
 
                         glTFAccessor accessor = new glTFAccessor();
                         accessor.bufferViewObject.byteOffset = offset;
@@ -603,6 +614,114 @@ public class glTFExporter : EditorWindow
 
                         attributes["WEIGHTS_0"] = cache.accessors.Count;
                         cache.accessors.Add(accessor);
+                    }
+
+                    int blendShapeCount = mesh.blendShapeCount;
+                    if (blendShapeCount > 0)
+                    {
+                        for (int k = 0; k < blendShapeCount; ++k)
+                        {
+                            string name = mesh.GetBlendShapeName(k);
+                            int frameCount = mesh.GetBlendShapeFrameCount(k);
+
+                            for (int m = 0; m < frameCount; ++m)
+                            {
+                                Vector3[] deltaVertices = new Vector3[vertices.Length];
+                                Vector3[] deltaNormals = new Vector3[vertices.Length];
+                                Vector3[] deltaTangents = new Vector3[vertices.Length];
+                                mesh.GetBlendShapeFrameVertices(k, m, deltaVertices, deltaNormals, deltaTangents);
+                                float weight = mesh.GetBlendShapeFrameWeight(k, m);
+
+                                BlendShape s = new BlendShape();
+                                s.name = name;
+                                s.deltaVertices = deltaVertices;
+                                s.deltaNormals = deltaNormals;
+                                s.deltaTangents = deltaTangents;
+                                s.weight = weight;
+
+                                shapes.Add(s);
+                            }
+                        }
+
+                        JArray targets = new JArray();
+                        primitive["targets"] = targets;
+
+                        for (int k = 0; k < shapes.Count; ++k)
+                        {
+                            BlendShape shape = shapes[k];
+                            JObject target = new JObject();
+                            targets.Add(target);
+
+                            target["name"] = shape.name;
+
+                            if (shape.deltaVertices.Length > 0)
+                            {
+                                Vector3 min;
+                                Vector3 max;
+                                PushBufferVector3(shape.deltaVertices, out offset, out size, out min, out max);
+
+                                glTFAccessor accessor = new glTFAccessor();
+                                accessor.bufferViewObject.byteOffset = offset;
+                                accessor.bufferViewObject.byteLength = size;
+                                accessor.bufferViewObject.byteStride = size / shape.deltaVertices.Length;
+                                accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
+                                accessor.bufferView = cache.accessors.Count;
+                                accessor.componentType = GL_FLOAT;
+                                accessor.type = "VEC3";
+                                accessor.count = shape.deltaVertices.Length;
+                                accessor.min = new float[3];
+                                accessor.max = new float[3];
+                                accessor.min[0] = min.x;
+                                accessor.min[1] = min.y;
+                                accessor.min[2] = min.z;
+                                accessor.max[0] = max.x;
+                                accessor.max[1] = max.y;
+                                accessor.max[2] = max.z;
+
+                                target["POSITION"] = cache.accessors.Count;
+                                cache.accessors.Add(accessor);
+                            }
+
+                            if (shape.deltaNormals.Length > 0)
+                            {
+                                Vector3 min;
+                                Vector3 max;
+                                PushBufferVector3(shape.deltaNormals, out offset, out size, out min, out max);
+
+                                glTFAccessor accessor = new glTFAccessor();
+                                accessor.bufferViewObject.byteOffset = offset;
+                                accessor.bufferViewObject.byteLength = size;
+                                accessor.bufferViewObject.byteStride = size / shape.deltaNormals.Length;
+                                accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
+                                accessor.bufferView = cache.accessors.Count;
+                                accessor.componentType = GL_FLOAT;
+                                accessor.type = "VEC3";
+                                accessor.count = shape.deltaNormals.Length;
+
+                                target["NORMAL"] = cache.accessors.Count;
+                                cache.accessors.Add(accessor);
+                            }
+
+                            if (shape.deltaTangents.Length > 0)
+                            {
+                                Vector3 min;
+                                Vector3 max;
+                                PushBufferVector3(shape.deltaTangents, out offset, out size, out min, out max);
+
+                                glTFAccessor accessor = new glTFAccessor();
+                                accessor.bufferViewObject.byteOffset = offset;
+                                accessor.bufferViewObject.byteLength = size;
+                                accessor.bufferViewObject.byteStride = size / shape.deltaTangents.Length;
+                                accessor.bufferViewObject.target = GL_ARRAY_BUFFER;
+                                accessor.bufferView = cache.accessors.Count;
+                                accessor.componentType = GL_FLOAT;
+                                accessor.type = "VEC3";
+                                accessor.count = shape.deltaTangents.Length;
+
+                                target["TANGENT"] = cache.accessors.Count;
+                                cache.accessors.Add(accessor);
+                            }
+                        }
                     }
                 }
 
@@ -630,6 +749,17 @@ public class glTFExporter : EditorWindow
 
                 primitive["mode"] = 4;
                 primitive["material"] = cache.meshMaterials[i][j];
+            }
+
+            if (shapes.Count > 0)
+            {
+                JArray weights = new JArray();
+                jmesh["weights"] = weights;
+
+                for (int j = 0; j < shapes.Count; ++j)
+                {
+                    weights.Add(shapes[j].weight);
+                }
             }
         }
     }
