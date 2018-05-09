@@ -185,7 +185,14 @@ public class glTFExporter : EditorWindow
 
         if (skinnedMeshRenderer)
         {
-            ExportSkinnedMeshRenderer(node, components, skinnedMeshRenderer);
+            if (skinnedMeshRenderer.sharedMesh.blendShapeCount > 0)
+            {
+                ExportMeshRenderer(node, components, skinnedMeshRenderer.sharedMesh, skinnedMeshRenderer, "MeshRenderer");
+            }
+            else
+            {
+                ExportSkinnedMeshRenderer(node, components, skinnedMeshRenderer);
+            }
         }
 
         int childCount = transform.childCount;
@@ -417,7 +424,6 @@ public class glTFExporter : EditorWindow
         public Vector3[] deltaVertices;
         public Vector3[] deltaNormals;
         public Vector3[] deltaTangents;
-        public float weight;
     }
 
     void ExportMeshes(JObject gltf)
@@ -624,27 +630,51 @@ public class glTFExporter : EditorWindow
                             string name = mesh.GetBlendShapeName(k);
                             int frameCount = mesh.GetBlendShapeFrameCount(k);
 
+                            Vector3[] deltaVertices = new Vector3[vertices.Length];
+                            Vector3[] deltaNormals = new Vector3[vertices.Length];
+                            Vector3[] deltaTangents = new Vector3[vertices.Length];
+
+                            for (int m = 0; m < vertices.Length; ++m)
+                            {
+                                deltaVertices[m] = Vector3.zero;
+                                deltaNormals[m] = Vector3.zero;
+                                deltaTangents[m] = Vector3.zero;
+                            }
+
                             for (int m = 0; m < frameCount; ++m)
                             {
-                                Vector3[] deltaVertices = new Vector3[vertices.Length];
-                                Vector3[] deltaNormals = new Vector3[vertices.Length];
-                                Vector3[] deltaTangents = new Vector3[vertices.Length];
-                                mesh.GetBlendShapeFrameVertices(k, m, deltaVertices, deltaNormals, deltaTangents);
+                                Vector3[] frameDeltaVertices = new Vector3[vertices.Length];
+                                Vector3[] frameDeltaNormals = new Vector3[vertices.Length];
+                                Vector3[] frameDeltaTangents = new Vector3[vertices.Length];
+
+                                mesh.GetBlendShapeFrameVertices(k, m, frameDeltaVertices, frameDeltaNormals, frameDeltaTangents);
                                 float weight = mesh.GetBlendShapeFrameWeight(k, m);
 
-                                BlendShape s = new BlendShape();
-                                s.name = name;
-                                s.deltaVertices = deltaVertices;
-                                s.deltaNormals = deltaNormals;
-                                s.deltaTangents = deltaTangents;
-                                s.weight = weight;
-
-                                shapes.Add(s);
+                                for (int n = 0; n < vertices.Length; ++n)
+                                {
+                                    deltaVertices[n] += frameDeltaVertices[n] * weight / 100.0f;
+                                    deltaNormals[n] += frameDeltaNormals[n] * weight / 100.0f;
+                                    deltaTangents[n] += frameDeltaTangents[n] * weight / 100.0f;
+                                }
                             }
+
+                            BlendShape s = new BlendShape();
+                            s.name = name;
+                            s.deltaVertices = deltaVertices;
+                            s.deltaNormals = deltaNormals;
+                            s.deltaTangents = deltaTangents;
+
+                            shapes.Add(s);
                         }
 
                         JArray targets = new JArray();
                         primitive["targets"] = targets;
+
+                        JObject extras = new JObject();
+                        primitive["extras"] = extras;
+
+                        JArray targetBlendShapeNames = new JArray();
+                        extras["targetBlendShapeNames"] = targetBlendShapeNames;
 
                         for (int k = 0; k < shapes.Count; ++k)
                         {
@@ -652,7 +682,7 @@ public class glTFExporter : EditorWindow
                             JObject target = new JObject();
                             targets.Add(target);
 
-                            target["name"] = shape.name;
+                            targetBlendShapeNames.Add(shape.name);
 
                             if (shape.deltaVertices.Length > 0)
                             {
@@ -758,7 +788,7 @@ public class glTFExporter : EditorWindow
 
                 for (int j = 0; j < shapes.Count; ++j)
                 {
-                    weights.Add(shapes[j].weight);
+                    weights.Add(0.0f);
                 }
             }
         }
@@ -1017,57 +1047,67 @@ public class glTFExporter : EditorWindow
 
     void ExportTextures(JObject gltf)
     {
-        if (cache.textures.Count > 0)
+        if (cache.textures.Count == 0)
         {
-            JArray textures = new JArray();
-            gltf["textures"] = textures;
+            return;
+        }
 
-            for (int i = 0; i < cache.textures.Count; ++i)
+        JArray textures = new JArray();
+        gltf["textures"] = textures;
+
+        for (int i = 0; i < cache.textures.Count; ++i)
+        {
+            Texture texture = cache.textures[i];
+            JObject jtexture = new JObject();
+            textures.Add(jtexture);
+
+            jtexture["name"] = texture.name;
+
+            if (texture is Texture2D)
             {
-                Texture texture = cache.textures[i];
-                JObject jtexture = new JObject();
-                textures.Add(jtexture);
+                Texture2D tex2d = texture as Texture2D;
+                int mipmap = tex2d.mipmapCount > 1 ? 1 : 0;
+                int repeat = texture.wrapMode == TextureWrapMode.Clamp ? 0 : 1;
+                int nearest = texture.filterMode == FilterMode.Point ? 1 : 0;
+                int sampler = nearest * 4 + mipmap * 2 + repeat;
 
-                jtexture["name"] = texture.name;
-
-                if (texture is Texture2D)
-                {
-                    Texture2D tex2d = texture as Texture2D;
-                    int mipmap = tex2d.mipmapCount > 1 ? 1 : 0;
-                    int repeat = texture.wrapMode == TextureWrapMode.Clamp ? 0 : 1;
-                    int nearest = texture.filterMode == FilterMode.Point ? 1 : 0;
-                    int sampler = nearest * 4 + mipmap * 2 + repeat;
-
-                    jtexture["sampler"] = sampler;
-                    jtexture["source"] = i;
-                }
+                jtexture["sampler"] = sampler;
+                jtexture["source"] = i;
             }
-        }  
+        }
     }
 
     void ExportImages(JObject gltf)
     {
-        if (cache.textures.Count > 0)
+        if (cache.textures.Count == 0)
         {
-            JArray images = new JArray();
-            gltf["images"] = images;
+            return;
+        }
 
-            for (int i = 0; i < cache.textures.Count; ++i)
+        JArray images = new JArray();
+        gltf["images"] = images;
+
+        for (int i = 0; i < cache.textures.Count; ++i)
+        {
+            Texture texture = cache.textures[i];
+            string assetPath = AssetDatabase.GetAssetPath(texture);
+            JObject jimage = new JObject();
+            images.Add(jimage);
+
+            string uri = new FileInfo(assetPath).Name;
+            jimage["uri"] = uri;
+
+            if (uri.EndsWith(".png") || uri.EndsWith(".PNG"))
             {
-                Texture texture = cache.textures[i];
-                string assetPath = AssetDatabase.GetAssetPath(texture);
-                JObject jimage = new JObject();
-                images.Add(jimage);
-
-                string uri = new FileInfo(assetPath).Name;
-                jimage["uri"] = uri;
-
-                if (uri.EndsWith(".png") || uri.EndsWith(".PNG"))
-                {
-                    File.Copy(assetPath, new FileInfo(gltfPath).Directory.FullName + "/" + uri, true);
-                }
+                File.Copy(assetPath, new FileInfo(gltfPath).Directory.FullName + "/" + uri, true);
             }
         }
+    }
+
+    class BlendShapeCurve
+    {
+        public string propertyName;
+        public AnimationCurve curve;
     }
 
     class AnimationChannel
@@ -1076,11 +1116,16 @@ public class glTFExporter : EditorWindow
         public AnimationCurve[] translation = new AnimationCurve[3];
         public AnimationCurve[] rotation = new AnimationCurve[4];
         public AnimationCurve[] scale = new AnimationCurve[3];
-        public AnimationCurve[] weights = new AnimationCurve[1];
+        public List<BlendShapeCurve> weights = new List<BlendShapeCurve>();
     }
 
     void ExportAnimations(JObject gltf)
     {
+        if (cache.animations.Count == 0)
+        {
+            return;
+        }
+
         JArray animations = new JArray();
         gltf["animations"] = animations;
 
@@ -1160,6 +1205,15 @@ public class glTFExporter : EditorWindow
                             channel.scale[2] = curve;
                             break;
                     }
+
+                    if (bind.propertyName.StartsWith("blendShape."))
+                    {
+                        BlendShapeCurve shape = new BlendShapeCurve();
+                        shape.propertyName = bind.propertyName;
+                        shape.curve = curve;
+
+                        channel.weights.Add(shape);
+                    }
                 }
 
                 List<string> pathes = new List<string>();
@@ -1172,29 +1226,60 @@ public class glTFExporter : EditorWindow
 
                     if (channel.translation[0] != null)
                     {
-                        ExportCurveSampler(channels, samplers, channel, channel.translation, "translation");
+                        ExportCurveSampler(channels, samplers, channel, channel.translation[0].keys, channel.translation, "translation");
                     }
 
                     if (channel.rotation[0] != null)
                     {
-                        ExportCurveSampler(channels, samplers, channel, channel.rotation, "rotation");
+                        ExportCurveSampler(channels, samplers, channel, channel.rotation[0].keys, channel.rotation, "rotation");
                     }
 
                     if (channel.scale[0] != null)
                     {
-                        ExportCurveSampler(channels, samplers, channel, channel.scale, "scale");
+                        ExportCurveSampler(channels, samplers, channel, channel.scale[0].keys, channel.scale, "scale");
                     }
 
-                    if (channel.weights[0] != null)
+                    if (channel.weights.Count > 0)
                     {
-                        ExportCurveSampler(channels, samplers, channel, channel.weights, "weights");
+                        JArray jnodes = gltf["nodes"] as JArray;
+                        int mesh = (int) jnodes[channel.node]["mesh"];
+                        JArray jmeshes = gltf["meshes"] as JArray;
+                        JArray jtargetBlendShapeNames = jmeshes[mesh]["primitives"][0]["extras"]["targetBlendShapeNames"] as JArray;
+
+                        AnimationCurve[] fullShapes = new AnimationCurve[jtargetBlendShapeNames.Count];
+
+                        for (int m = 0; m < jtargetBlendShapeNames.Count; ++m)
+                        {
+                            string shapeName = (string) jtargetBlendShapeNames[m];
+                            BlendShapeCurve find = null;
+
+                            for (int n = 0; n < channel.weights.Count; ++n)
+                            {
+                                if (channel.weights[n].propertyName.Substring("blendShape.".Length) == shapeName)
+                                {
+                                    find = channel.weights[n];
+                                    break;
+                                }
+                            }
+
+                            if (find != null)
+                            {
+                                fullShapes[m] = find.curve;
+                            }
+                            else
+                            {
+                                fullShapes[m] = null;
+                            }
+                        }
+
+                        ExportCurveSampler(channels, samplers, channel, channel.weights[0].curve.keys, fullShapes, "weights");
                     }
                 }
             }
         }
     }
 
-    void ExportCurveSampler(JArray channels, JArray samplers, AnimationChannel channel, AnimationCurve[] curves, string path)
+    void ExportCurveSampler(JArray channels, JArray samplers, AnimationChannel channel, Keyframe[] keys, AnimationCurve[] curves, string path)
     {
         JObject jchannel = new JObject();
         channels.Add(jchannel);
@@ -1223,12 +1308,14 @@ public class glTFExporter : EditorWindow
             outCount = 1;
         }
         
-        var keys = curves[0].keys;
         float[] times = new float[keys.Length];
         for (int i = 0; i < keys.Length; ++i)
         {
             times[i] = keys[i].time;
         }
+
+        bool isBlendShape = (path == "weights");
+        float valueScale = isBlendShape ? 0.01f : 1.0f;
 
         float[] values = new float[keys.Length * curves.Length * outCount];
         for (int i = 0; i < keys.Length; ++i)
@@ -1237,30 +1324,34 @@ public class glTFExporter : EditorWindow
             {
                 for (int k = 0; k < curves.Length; ++k)
                 {
-                    var key = curves[k].keys[i];
                     float value = 0;
 
-                    if (outCount == 3)
+                    if (curves[k] != null)
                     {
-                        switch (j)
+                        var key = curves[k].keys[i];
+                        
+                        if (outCount == 3)
                         {
-                            case 0:
-                                value = key.inTangent;
-                                break;
-                            case 1:
-                                value = key.value;
-                                break;
-                            case 2:
-                                value = key.outTangent;
-                                break;
+                            switch (j)
+                            {
+                                case 0:
+                                    value = key.inTangent;
+                                    break;
+                                case 1:
+                                    value = key.value;
+                                    break;
+                                case 2:
+                                    value = key.outTangent;
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            value = key.value;
                         }
                     }
-                    else
-                    {
-                        value = key.value;
-                    }
 
-                    values[i * outCount * curves.Length + j * curves.Length + k] = value;
+                    values[i * outCount * curves.Length + j * curves.Length + k] = value * valueScale;
                 }
             }
         }
@@ -1299,19 +1390,27 @@ public class glTFExporter : EditorWindow
             accessor.bufferViewObject.target = -1;
             accessor.bufferView = cache.accessors.Count;
             accessor.componentType = GL_FLOAT;
-            if (curves.Length == 1)
+            if (path == "weights")
             {
                 accessor.type = "SCALAR";
+                accessor.count = values.Length;
             }
-            else if (curves.Length == 3)
+            else
             {
-                accessor.type = "VEC3";
+                if (curves.Length == 1)
+                {
+                    accessor.type = "SCALAR";
+                }
+                else if (curves.Length == 3)
+                {
+                    accessor.type = "VEC3";
+                }
+                else if (curves.Length == 4)
+                {
+                    accessor.type = "VEC4";
+                }
+                accessor.count = values.Length / curves.Length;
             }
-            else if (curves.Length == 4)
-            {
-                accessor.type = "VEC4";
-            }
-            accessor.count = values.Length / curves.Length;
 
             jsampler["output"] = cache.accessors.Count;
             cache.accessors.Add(accessor);
@@ -1320,6 +1419,11 @@ public class glTFExporter : EditorWindow
 
     void ExportSkins(JObject gltf)
     {
+        if (cache.skins.Count == 0)
+        {
+            return;
+        }
+
         JArray skins = new JArray();
         gltf["skins"] = skins;
 
