@@ -185,14 +185,7 @@ public class glTFExporter : EditorWindow
 
         if (skinnedMeshRenderer)
         {
-            if (skinnedMeshRenderer.sharedMesh.blendShapeCount > 0)
-            {
-                ExportMeshRenderer(node, components, skinnedMeshRenderer.sharedMesh, skinnedMeshRenderer, "MeshRenderer");
-            }
-            else
-            {
-                ExportSkinnedMeshRenderer(node, components, skinnedMeshRenderer);
-            }
+            ExportSkinnedMeshRenderer(node, components, skinnedMeshRenderer);
         }
 
         int childCount = transform.childCount;
@@ -258,8 +251,11 @@ public class glTFExporter : EditorWindow
     {
         ExportMeshRenderer(node, components, skinnedMeshRenderer.sharedMesh, skinnedMeshRenderer, "SkinnedMeshRenderer");
 
-        node["skin"] = cache.skins.Count;
-        cache.skins.Add(skinnedMeshRenderer);
+        if (skinnedMeshRenderer.bones.Length > 0)
+        {
+            node["skin"] = cache.skins.Count;
+            cache.skins.Add(skinnedMeshRenderer);
+        }
     }
 
     void PushBufferUV(Vector2[] vecs, out int offset, out int size)
