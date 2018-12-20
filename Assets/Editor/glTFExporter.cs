@@ -1,8 +1,8 @@
 using UnityEditor;
 using UnityEngine;
 using System.IO;
-using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
+using Newtonsoft.Json.Linq;
 
 public class glTFExporter : EditorWindow
 {
@@ -258,6 +258,19 @@ public class glTFExporter : EditorWindow
         }
     }
 
+    void AlignBuffer()
+    {
+        int nextOffset = cache.buffer.Count;
+        if (nextOffset % 4 != 0)
+        {
+            int add = 4 - nextOffset % 4;
+            for (int i = 0; i < add; ++i)
+            {
+                cache.buffer.Add(0);
+            }
+        }
+    }
+
     void PushBufferUV(Vector2[] vecs, out int offset, out int size)
     {
         MemoryStream ms = new MemoryStream();
@@ -265,12 +278,13 @@ public class glTFExporter : EditorWindow
         for (int i = 0; i < vecs.Length; ++i)
         {
             bw.Write(vecs[i].x);
-            bw.Write(-vecs[i].y);
+            bw.Write(1.0f - vecs[i].y);
         }
 
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferVector3(Vector3[] vecs, out int offset, out int size, out Vector3 min, out Vector3 max)
@@ -293,6 +307,7 @@ public class glTFExporter : EditorWindow
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferVector4(Vector4[] vecs, out int offset, out int size)
@@ -310,6 +325,7 @@ public class glTFExporter : EditorWindow
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferColor(Color[] vecs, out int offset, out int size)
@@ -327,6 +343,7 @@ public class glTFExporter : EditorWindow
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferJoints(BoneWeight[] vecs, out int offset, out int size)
@@ -344,6 +361,7 @@ public class glTFExporter : EditorWindow
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferWeights(BoneWeight[] vecs, out int offset, out int size)
@@ -361,6 +379,7 @@ public class glTFExporter : EditorWindow
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferIndices(int[] indices, out int offset, out int size)
@@ -370,14 +389,15 @@ public class glTFExporter : EditorWindow
         int triangleCount = indices.Length / 3;
         for (int i = 0; i < triangleCount; ++i)
         {
-            bw.Write((ushort) indices[i * 3 + 0]);
-            bw.Write((ushort) indices[i * 3 + 1]);
-            bw.Write((ushort) indices[i * 3 + 2]);
+            bw.Write((ushort)indices[i * 3 + 0]);
+            bw.Write((ushort)indices[i * 3 + 1]);
+            bw.Write((ushort)indices[i * 3 + 2]);
         }
 
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferFloats(float[] floats, out int offset, out int size)
@@ -392,6 +412,7 @@ public class glTFExporter : EditorWindow
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     void PushBufferMatrices(Matrix4x4[] matrices, out int offset, out int size)
@@ -400,11 +421,13 @@ public class glTFExporter : EditorWindow
         BinaryWriter bw = new BinaryWriter(ms);
         for (int i = 0; i < matrices.Length; ++i)
         {
+            Matrix4x4 mat = matrices[i];
+
             for (int j = 0; j < 4; ++j)
             {
                 for (int k = 0; k < 4; ++k)
                 {
-                    bw.Write(matrices[i][k, j]);
+                    bw.Write(mat[k, j]);
                 }
             }
         }
@@ -412,6 +435,7 @@ public class glTFExporter : EditorWindow
         offset = cache.buffer.Count;
         size = (int) ms.Length;
         cache.buffer.AddRange(ms.ToArray());
+        AlignBuffer();
     }
 
     class BlendShape
@@ -424,6 +448,11 @@ public class glTFExporter : EditorWindow
 
     void ExportMeshes(JObject gltf)
     {
+        if (cache.meshes.Count == 0)
+        {
+            return;
+        }
+
         JArray meshes = new JArray();
         gltf["meshes"] = meshes;
 
@@ -792,6 +821,11 @@ public class glTFExporter : EditorWindow
 
     void ExportAccessors(JObject gltf)
     {
+        if (cache.accessors.Count == 0)
+        {
+            return;
+        }
+
         JArray accessors = new JArray();
         gltf["accessors"] = accessors;
 
@@ -870,6 +904,11 @@ public class glTFExporter : EditorWindow
 
     void ExportMaterials(JObject gltf)
     {
+        if (cache.materials.Count == 0)
+        {
+            return;
+        }
+
         JArray materials = new JArray();
         gltf["materials"] = materials;
 
@@ -909,10 +948,10 @@ public class glTFExporter : EditorWindow
                 if (type == ShaderUtil.ShaderPropertyType.TexEnv)
                 {
                     var texture = material.GetTexture(name);
+                    property["type"] = "Texture";
+
                     if (texture)
                     {
-                        property["type"] = "Texture";
-
                         int index = cache.textures.IndexOf(texture);
                         if (index < 0)
                         {
@@ -981,6 +1020,11 @@ public class glTFExporter : EditorWindow
 
     void ExportSamplers(JObject gltf)
     {
+        if (cache.textures.Count == 0)
+        {
+            return;
+        }
+
         JArray samplers = new JArray();
         gltf["samplers"] = samplers;
 
@@ -1059,17 +1103,25 @@ public class glTFExporter : EditorWindow
 
             jtexture["name"] = texture.name;
 
+            int repeat = texture.wrapMode == TextureWrapMode.Clamp ? 0 : 1;
+            int nearest = texture.filterMode == FilterMode.Point ? 1 : 0;
+            int sampler = 0;
+
             if (texture is Texture2D)
             {
-                Texture2D tex2d = texture as Texture2D;
-                int mipmap = tex2d.mipmapCount > 1 ? 1 : 0;
-                int repeat = texture.wrapMode == TextureWrapMode.Clamp ? 0 : 1;
-                int nearest = texture.filterMode == FilterMode.Point ? 1 : 0;
-                int sampler = nearest * 4 + mipmap * 2 + repeat;
-
-                jtexture["sampler"] = sampler;
-                jtexture["source"] = i;
+                Texture2D tex = texture as Texture2D;
+                int mipmap = tex.mipmapCount > 1 ? 1 : 0;
+                sampler = nearest * 4 + mipmap * 2 + repeat;
             }
+            else if (texture is Cubemap)
+            {
+                Cubemap tex = texture as Cubemap;
+                int mipmap = tex.mipmapCount > 1 ? 1 : 0;
+                sampler = nearest * 4 + mipmap * 2 + repeat;
+            }
+
+            jtexture["sampler"] = sampler;
+            jtexture["source"] = i;
         }
     }
 
@@ -1129,6 +1181,7 @@ public class glTFExporter : EditorWindow
         {
             Animation animation = cache.animations[i];
             var clips = AnimationUtility.GetAnimationClips(animation.gameObject);
+
             for (int j = 0; j < clips.Length; ++j)
             {
                 var clip = clips[j];
@@ -1155,6 +1208,11 @@ public class glTFExporter : EditorWindow
                 for (int k = 0; k < bindings.Length; ++k)
                 {
                     var bind = bindings[k];
+
+                    if (animation.transform.Find(bind.path) == null)
+                    {
+                        continue;
+                    }
 
                     AnimationChannel channel;
                     if (channelMap.TryGetValue(bind.path, out channel) == false)

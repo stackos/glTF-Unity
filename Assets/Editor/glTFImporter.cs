@@ -12,7 +12,7 @@ public class glTFImporter : EditorWindow
     public static void ShowWindow()
     {
         EditorWindow win = EditorWindow.GetWindow(typeof(glTFImporter));
-        win.minSize = new Vector2(800, 600);
+        win.minSize = new Vector2(200, 200);
     }
 
     void OnGUI()
@@ -203,31 +203,31 @@ public class glTFImporter : EditorWindow
         Vector3[] vertices = new Vector3[vertexValues.Count];
         for (int i = 0; i < vertexValues.Count; ++i)
         {
-            vertices[i] = new Vector3(vertexValues[i][0], vertexValues[i][1], -vertexValues[i][2]);
+            vertices[i] = new Vector3(-vertexValues[i][0], vertexValues[i][1], vertexValues[i][2]);
         }
 
         Vector3[] normals = new Vector3[normalValues.Count];
         for (int i = 0; i < normalValues.Count; ++i)
         {
-            normals[i] = new Vector3(normalValues[i][0], normalValues[i][1], -normalValues[i][2]);
+            normals[i] = new Vector3(-normalValues[i][0], normalValues[i][1], normalValues[i][2]);
         }
 
         Vector4[] tangents = new Vector4[tangentValues.Count];
         for (int i = 0; i < tangentValues.Count; ++i)
         {
-            tangents[i] = new Vector4(tangentValues[i][0], tangentValues[i][1], tangentValues[i][2], tangentValues[i][3]);
+            tangents[i] = new Vector4(-tangentValues[i][0], tangentValues[i][1], tangentValues[i][2], tangentValues[i][3]);
         }
 
         Vector2[] uv = new Vector2[uvValues.Count];
         for (int i = 0; i < uvValues.Count; ++i)
         {
-            uv[i] = new Vector2(uvValues[i][0], -uvValues[i][1]);
+            uv[i] = new Vector2(uvValues[i][0], 1.0f - uvValues[i][1]);
         }
 
         Vector2[] uv2 = new Vector2[uv2Values.Count];
         for (int i = 0; i < uv2Values.Count; ++i)
         {
-            uv2[i] = new Vector2(uv2Values[i][0], -uv2Values[i][1]);
+            uv2[i] = new Vector2(uv2Values[i][0], 1.0f - uv2Values[i][1]);
         }
 
         Color[] colors = new Color[colorValues.Count];
@@ -458,7 +458,7 @@ public class glTFImporter : EditorWindow
             float y = (float) jtranslation[1];
             float z = (float) jtranslation[2];
 
-            obj.transform.localPosition = new Vector3(x, y, z);
+            obj.transform.localPosition = new Vector3(-x, y, z);
         }
 
         JToken jrotation;
@@ -469,7 +469,7 @@ public class glTFImporter : EditorWindow
             float z = (float) jrotation[2];
             float w = (float) jrotation[3];
 
-            obj.transform.localRotation = new Quaternion(x, y, z, w);
+            obj.transform.localRotation = new Quaternion(x, -y, -z, w);
         }
 
         JToken jscale;
